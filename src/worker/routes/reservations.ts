@@ -408,9 +408,8 @@ reservationRoutes.get("/photos/:id", async (c) => {
 });
 
 /**
- * 予約の変更。
- * - 取り込んだ予約: 予約／ブロックの切り替えだけ（以後の取り込みで上書きしない）
- * - 手動登録・テスト予約: 日程・経路・代表者名・メモ
+ * 予約の変更（手動登録・テスト予約だけ。日程・経路・代表者名・メモ）。
+ * 予約サイトから取り込んだ予約は参照のみで、状態は常に予約サイトの iCal の内容どおりにする
  */
 reservationRoutes.patch("/reservations/:id", async (c) => {
   const id = c.req.param("id");
@@ -421,17 +420,7 @@ reservationRoutes.patch("/reservations/:id", async (c) => {
   const now = nowIso();
   const actor = `admin:${c.var.admin.email}`;
 
-  if (row.source === "ical") {
-    const parsed = z.object({ status: z.enum(["confirmed", "blocked"]) }).safeParse(body);
-    if (!parsed.success) return c.json(badRequest("取り込んだ予約は、予約／ブロックの切り替えだけができます"), 400);
-    await db.batch([
-      db
-        .prepare("UPDATE reservations SET status = ?, status_locked = 1, updated_at = ? WHERE id = ?")
-        .bind(parsed.data.status, now, id),
-      auditStatement(db, actor, `set_status_${parsed.data.status}`, id),
-    ]);
-    return c.json({ ok: true });
-  }
+  if (row.source === "ical") return c.json(badRequest("予約サイトから取り込んだ予約は、このアプリからは変更できません（参照のみ）。変更・キャンセルは予約サイトで行ってください"), 400);
 
   const parsed = manualSchema.safeParse(body);
   if (!parsed.success) return c.json(badRequest(parsed.error.issues[0]?.message ?? "入力内容を確認してください"), 400);
@@ -448,7 +437,7 @@ reservationRoutes.patch("/reservations/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/** 手動登録・テスト予約の削除。宿泊者の登録が始まっていたら削除できない */
+/** 手動登録・テスト予約の削除（予約サイトから取り込んだ予約は参照のみで、削除もキャンセルもできない） */
 reservationRoutes.delete("/reservations/:id", async (c) => {
   const id = c.req.param("id");
   const row = await loadDetail(c, id);
@@ -473,6 +462,8 @@ reservationRoutes.delete("/reservations/:id", async (c) => {
     return c.json({ ok: true });
   }
 
+  if (row.source === "ical") return c.json(badRequest("予約サイトから取り込んだ予約は、このアプリからは変更できません（参照のみ）。変更・キャンセルは予約サイトで行ってください"), 400);
+
   // 1 人でもチェックインしたら「宿泊した」ことになり、名簿と写真は 3 年間の保存が必要（要件定義書 D-01）
   if (row.stay_status !== "not_arrived" || row.first_checkin_at) {
     return c.json(badRequest("チェックインした宿泊者がいるため削除できません（名簿と写真は 3 年間の保存が必要です）"), 400);
@@ -489,30 +480,12 @@ reservationRoutes.delete("/reservations/:id", async (c) => {
     db.prepare("DELETE FROM photos WHERE reservation_id = ?").bind(id),
   ];
 
-  if (row.source === "manual") {
-    await db.batch([
-      ...removeGuests,
-      db.prepare("DELETE FROM reservations WHERE id = ? AND stay_status = 'not_arrived'").bind(id),
-      auditStatement(db, `admin:${c.var.admin.email}`, "delete_reservation", id),
-    ]);
-    return c.json({ ok: true, deleted: true });
-  }
-
-  // 取り込んだ予約は、行を消すと次の取り込みで再び登録されるため、キャンセル（以後の取り込みで上書きしない）にして残す
   await db.batch([
     ...removeGuests,
-    db
-      .prepare(
-        `UPDATE reservations SET status = 'cancelled', status_locked = 1, guest_token = NULL, reg_status = 'none',
-           reject_reason = NULL, keybox_code = NULL, consent_at = NULL, consent_for_companions = 0, invite_sent_at = NULL,
-           submitted_at = NULL, approved_at = NULL, code_sent_at = NULL, display_name = NULL, guest_total = 0,
-           guest_ready = 0, guest_pending = 0, guest_checked_in = 0, drive_folder_id = NULL, lang = NULL, updated_at = ?
-         WHERE id = ? AND stay_status = 'not_arrived'`,
-      )
-      .bind(nowIso(), id),
-    auditStatement(db, `admin:${c.var.admin.email}`, "cancel_reservation", id),
+    db.prepare("DELETE FROM reservations WHERE id = ? AND source = 'manual' AND stay_status = 'not_arrived'").bind(id),
+    auditStatement(db, `admin:${c.var.admin.email}`, "delete_reservation", id),
   ]);
-  return c.json({ ok: true, deleted: false });
+  return c.json({ ok: true, deleted: true });
 });
 
 /** 宿泊者入力画面の URL の作り直し（古い URL は無効になる。要件定義書 G-03） */

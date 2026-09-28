@@ -89,9 +89,10 @@ export async function syncSource(db: Db, source: IcalSource, today: string): Pro
       db
         .prepare(
           `UPDATE reservations SET external_uid = ?, check_in_date = ?, check_out_date = ?, status = ?,
-             reservation_code = ?, phone_last4 = ?, updated_at = ? WHERE id = ?`,
+             reservation_code = ?, phone_last4 = ?, guest_token = COALESCE(guest_token, ?), updated_at = ? WHERE id = ?`,
         )
-        .bind(up.uid, up.checkInDate, up.checkOutDate, up.status, up.reservationCode, up.phoneLast4, now, up.id),
+        // 以前アプリの中でキャンセルにして URL を消した予約が、予約として戻ってきた場合に備えて URL を作り直す
+        .bind(up.uid, up.checkInDate, up.checkOutDate, up.status, up.reservationCode, up.phoneLast4, randomToken(), now, up.id),
     );
   }
   for (const row of plan.cancels) {

@@ -1496,3 +1496,9 @@ label.check.inline {
   font-size: 0.95rem;
   margin: 16px 0 4px;
 }
+
+.read-only-note {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
