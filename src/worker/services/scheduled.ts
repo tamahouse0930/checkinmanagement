@@ -3,6 +3,7 @@ import type { Env } from "../env";
 import { Db } from "../lib/db";
 import { getSettings } from "../lib/settings";
 import { DAY_MS, nowIso } from "../lib/time";
+import { deleteFile } from "./google/drive";
 import { notifyHost } from "./notify";
 import { syncAll } from "./sync";
 
@@ -13,16 +14,24 @@ async function claimDailyJob(db: Db, job: string, date: string): Promise<boolean
 }
 
 /**
- * 作成から 7 日を過ぎたテスト予約を削除する（設計書 4.9）。部分索引 idx_reservations_test だけを使う。
- * Google ドライブの写真の削除は、写真の削除をまとめて扱う段階で追加する。
+ * 作成から 7 日を過ぎたテスト予約を、名簿・写真（Google ドライブのフォルダ）ごと削除する（設計書 4.9）。
+ * 部分索引 idx_reservations_test だけを使う。外部へのリクエストの上限に収まるよう、1 回に 20 件まで
  */
-async function purgeTestReservations(db: Db): Promise<void> {
+async function purgeTestReservations(env: Env, db: Db): Promise<void> {
   const cutoff = new Date(Date.now() - 7 * DAY_MS).toISOString();
-  const target = "SELECT id FROM reservations WHERE is_test = 1 AND created_at < ?";
+  const rows = await db.all<{ id: string; drive_folder_id: string | null }>(
+    db.prepare("SELECT id, drive_folder_id FROM reservations WHERE is_test = 1 AND created_at < ? LIMIT 20").bind(cutoff),
+  );
+  if (rows.length === 0) return;
+  for (const r of rows) {
+    if (r.drive_folder_id) await deleteFile(env, db, r.drive_folder_id).catch(() => undefined);
+  }
+  const ids = rows.map((r) => r.id);
+  const marks = ids.map(() => "?").join(",");
   await db.batch([
-    db.prepare(`DELETE FROM guests WHERE reservation_id IN (${target})`).bind(cutoff),
-    db.prepare(`DELETE FROM photos WHERE reservation_id IN (${target})`).bind(cutoff),
-    db.prepare("DELETE FROM reservations WHERE is_test = 1 AND created_at < ?").bind(cutoff),
+    db.prepare(`DELETE FROM guests WHERE reservation_id IN (${marks})`).bind(...ids),
+    db.prepare(`DELETE FROM photos WHERE reservation_id IN (${marks})`).bind(...ids),
+    db.prepare(`DELETE FROM reservations WHERE is_test = 1 AND id IN (${marks})`).bind(...ids),
   ]);
 }
 
@@ -94,7 +103,7 @@ export async function runScheduled(env: Env, origin: string | null = null): Prom
   try {
     if (now.hour >= 5 && (await claimDailyJob(db, "daily_morning", now.date))) {
       await syncAll(env, db);
-      await purgeTestReservations(db);
+      await purgeTestReservations(env, db);
     }
     if (now.hour >= 18 && (await claimDailyJob(db, "evening_unregistered", now.date))) {
       await notifyUnregistered(env, db, origin);

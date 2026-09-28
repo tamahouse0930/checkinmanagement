@@ -19,7 +19,7 @@ import { auditStatement } from "../lib/audit";
 import { randomToken } from "../lib/crypto";
 import { getSettings, getText, PROPERTY_ID } from "../lib/settings";
 import { nowIso } from "../lib/time";
-import { downloadFile } from "../services/google/drive";
+import { deleteFile, downloadFile } from "../services/google/drive";
 import { countersStatement, type GuestRow, type ReservationRow, toView } from "../services/guests";
 import { syncAll } from "../services/sync";
 import { isLang, LANGS, type Lang } from "../../shared/langs";
@@ -450,9 +450,29 @@ reservationRoutes.delete("/reservations/:id", async (c) => {
   const id = c.req.param("id");
   const row = await loadDetail(c, id);
   if (!row) return c.json(notFound(), 404);
+  const db = c.var.db;
+
+  // テスト予約は、登録や承認が進んでいても、名簿・写真ごと削除できる
+  if (row.is_test === 1) {
+    if (row.drive_folder_id) {
+      // 宿泊ごとのフォルダを消すと、中の写真もまとめて消える
+      await deleteFile(c.env, db, row.drive_folder_id).catch((e) =>
+        console.error(JSON.stringify({ event: "test_folder_delete_failed", message: String(e) })),
+      );
+    }
+    await db.batch([
+      // 宿泊者が写真を参照しているため、宿泊者 → 写真 → 予約の順に消す
+      db.prepare("DELETE FROM guests WHERE reservation_id = ?").bind(id),
+      db.prepare("DELETE FROM photos WHERE reservation_id = ?").bind(id),
+      db.prepare("DELETE FROM reservations WHERE id = ? AND is_test = 1").bind(id),
+      auditStatement(db, `admin:${c.var.admin.email}`, "delete_test_reservation", id),
+    ]);
+    return c.json({ ok: true });
+  }
+
+  // 本番の予約は、名簿を誤って消さないよう、宿泊者の登録が始まる前の手動登録だけ削除できる
   if (row.source !== "manual") return c.json(badRequest("取り込んだ予約は削除できません（ブロックに変更してください）"), 400);
   if (row.reg_status !== "none") return c.json(badRequest("宿泊者の登録が始まっているため削除できません"), 400);
-  const db = c.var.db;
   await db.batch([
     db.prepare("DELETE FROM reservations WHERE id = ? AND reg_status = 'none'").bind(id),
     auditStatement(db, `admin:${c.var.admin.email}`, "delete_reservation", id),

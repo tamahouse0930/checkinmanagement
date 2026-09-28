@@ -322,7 +322,10 @@ export function ReservationPage({ id }: { id: string }) {
   };
 
   const remove = async () => {
-    if (!confirm("この宿泊を削除しますか？")) return;
+    const text = r.isTest
+      ? "このテスト予約を削除しますか？ 名簿と写真（Google ドライブのフォルダ）もすべて削除します。"
+      : "この宿泊を削除しますか？";
+    if (!confirm(text)) return;
     try {
       await api(`/api/admin/reservations/${id}`, { method: "DELETE" });
       backToMonth();
@@ -406,7 +409,7 @@ export function ReservationPage({ id }: { id: string }) {
               <button className="button" onClick={() => navigate(`/admin/reservations/${id}/edit`)}>
                 編集
               </button>
-              {r.regStatus === "none" && (
+              {(r.isTest || r.regStatus === "none") && (
                 <button className="button danger" onClick={remove}>
                   削除
                 </button>
