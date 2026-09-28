@@ -116,7 +116,7 @@ export function ReservationForm({ editId }: { editId?: string }) {
           )}
         </div>
         {!editId && isTest && (
-          <p className="note">テスト予約は、本番のタブレットや名簿に出さず、作成から 7 日後に自動で削除します。</p>
+          <p className="note">テスト予約は、タブレットには名前に「テスト」と添えて表示し、名簿の CSV には出さず、作成から 7 日後に自動で削除します。</p>
         )}
       </form>
     </section>

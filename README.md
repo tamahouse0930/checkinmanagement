@@ -5,6 +5,7 @@ Cloudflare Workers + D1（無料プラン）と、管理用の Google アカウ�
 
 - [要件定義書](docs/requirements.md)
 - [設計書](docs/design.md)
+- [試験運用の確認表](docs/trial-run.md)
 
 ## ローカルで動かす
 

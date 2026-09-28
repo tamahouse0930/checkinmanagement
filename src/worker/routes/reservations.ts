@@ -155,7 +155,7 @@ reservationRoutes.get("/calendar", async (c) => {
     // 照合待ち・チェックアウト未操作に気付けるよう、1 週間前にチェックアウトした予約から数える
     db
       .prepare(
-        `SELECT status, reg_status, stay_status, invite_sent_at, code_sent_at, guest_pending, check_out_date,
+        `SELECT status, reg_status, stay_status, invite_sent_at, code_sent_at, guest_pending, check_in_date, check_out_date,
            guest_checked_in, photos_verified_at FROM reservations
          WHERE check_out_date >= ? AND is_test = 0 AND status = 'confirmed' LIMIT 500`,
       )

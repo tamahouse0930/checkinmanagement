@@ -10,6 +10,7 @@ describe("要対応（要件定義書 H-02）", () => {
     invite_sent_at: "x",
     code_sent_at: "x",
     guest_pending: 0,
+    check_in_date: "2026-10-03",
     check_out_date: "2026-10-05",
     guest_checked_in: 2,
     photos_verified_at: null,
@@ -32,6 +33,18 @@ describe("要対応（要件定義書 H-02）", () => {
     const old = { ...base, reg_status: "none" as const, stay_status: "not_arrived" as const, invite_sent_at: null, guest_checked_in: 0 };
     expect(attentionOf(old, "2026-10-06", "08:00", "10:00")).toEqual([]);
     expect(attentionOf(old, "2026-10-04", "08:00", "10:00")).toEqual(["url_unsent"]);
+  });
+
+  it("明日以前のチェックインで、URL送信済み・入力中のままなら前日未登録", () => {
+    const sent = { ...base, reg_status: "none" as const, stay_status: "not_arrived" as const, code_sent_at: null, guest_checked_in: 0 };
+    expect(attentionOf(sent, "2026-10-01", "08:00", "10:00")).toEqual([]);
+    expect(attentionOf(sent, "2026-10-02", "08:00", "10:00")).toEqual(["unregistered"]);
+    expect(attentionOf({ ...sent, reg_status: "in_progress" }, "2026-10-03", "08:00", "10:00")).toEqual(["unregistered"]);
+    // 承認待ち・URL未送信は、それぞれの項目で数える
+    expect(attentionOf({ ...sent, reg_status: "submitted" }, "2026-10-02", "08:00", "10:00")).toEqual(["pending"]);
+    expect(attentionOf({ ...sent, invite_sent_at: null }, "2026-10-02", "08:00", "10:00")).toEqual(["url_unsent"]);
+    // チェックアウト日を過ぎたら数えない
+    expect(attentionOf(sent, "2026-10-06", "08:00", "10:00")).toEqual([]);
   });
 });
 
