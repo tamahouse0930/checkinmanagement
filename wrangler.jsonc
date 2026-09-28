@@ -16,8 +16,7 @@
     {
       "binding": "DB",
       "database_name": "tamahouse-checkin",
-      // 本番の D1 を作成したら、`wrangler d1 create tamahouse-checkin` が表示する ID に置き換える
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "bbcdeaed-885c-40c1-97b3-5c13d8477493",
       "migrations_dir": "migrations"
     }
   ],
