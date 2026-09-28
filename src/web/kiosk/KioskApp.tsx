@@ -209,8 +209,8 @@ export function KioskApp() {
   const [screen, setScreen] = useState<Screen>({ kind: "loading" });
   const [lang, setLang] = useState<Lang>("ja");
   const [status, setStatus] = useState<Status | null>(null);
-  const [guests, setGuests] = useState<{ guestId: string; name: string; done: boolean }[]>([]);
-  const [stays, setStays] = useState<{ reservationId: string; name: string }[]>([]);
+  const [guests, setGuests] = useState<{ guestId: string; name: string; done: boolean; isTest: boolean }[]>([]);
+  const [stays, setStays] = useState<{ reservationId: string; name: string; isTest: boolean }[]>([]);
   const [pairCode, setPairCode] = useState("");
   const [pairError, setPairError] = useState(false);
   const t = KIOSK_TEXT[lang];
@@ -392,6 +392,7 @@ export function KioskApp() {
                 onClick={() => setScreen({ kind: "camera", guestId: g.guestId, name: g.name })}
               >
                 {g.name}
+                {g.isTest && <span className="test-mark">テスト</span>}
                 {g.done && <span className="done-mark">✓ {t.done}</span>}
               </button>
             ))}
@@ -447,6 +448,7 @@ export function KioskApp() {
             {stays.map((s) => (
               <button key={s.reservationId} className="kbtn name" onClick={() => setScreen({ kind: "confirmCheckout", ...s })}>
                 {s.name}
+                {s.isTest && <span className="test-mark">テスト</span>}
               </button>
             ))}
           </div>

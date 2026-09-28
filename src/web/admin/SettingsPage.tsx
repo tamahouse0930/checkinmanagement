@@ -441,7 +441,7 @@ function DevicesSection() {
       )}
       <div className="actions">
         <a className="button" href="/kiosk?mode=test" target="_blank" rel="noreferrer">
-          タブレット画面をテスト（テスト予約だけを表示）
+          タブレット画面を開く（管理者のログインで。テストや、登録していない端末用）
         </a>
       </div>
       <Message message={message} />

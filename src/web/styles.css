@@ -1190,3 +1190,13 @@ label.check.inline {
   background: var(--alert-bg);
   color: var(--danger);
 }
+
+/* タブレットの一覧で、テスト予約の名前に添える印 */
+.test-mark {
+  justify-self: center;
+  font-size: 0.85rem;
+  color: #5b3fa8;
+  border: 1px dashed #7a5bc7;
+  border-radius: 999px;
+  padding: 0 10px;
+}

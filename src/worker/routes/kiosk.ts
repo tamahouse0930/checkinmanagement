@@ -36,8 +36,8 @@ function forbidden(c: Context<KioskEnv>) {
 }
 
 /**
- * 認証。通常は登録済みの端末の Cookie。テストモード（X-Kiosk-Mode: test）では管理者のログインで確認し、
- * テスト予約だけを扱う（要件定義書 H-32）
+ * 認証。通常は登録済みの端末の Cookie。X-Kiosk-Mode: test のときは、登録していない端末でも
+ * 管理者のログインで開ける（表示する予約は同じ。要件定義書 H-32）
  */
 const kioskAuth: MiddlewareHandler<KioskEnv> = async (c, next) => {
   if (c.req.method !== "GET" && c.req.header("Origin") !== new URL(c.req.url).origin) return forbidden(c);
@@ -117,30 +117,39 @@ kioskRoutes.get("/status", async (c) => {
 
 interface CheckinRow {
   reservation_id: string;
+  is_test: number;
   guest_id: string;
   seq: number;
   full_name: string | null;
   checked_in_at: string | null;
 }
 
-/** チェックインの一覧の条件（要件定義書 T-02、T-09）。索引 idx_reservations_checkout で当日前後の予約だけを調べる */
+/**
+ * チェックインの一覧の条件（要件定義書 T-02、T-09）。索引 idx_reservations_checkout で当日前後の予約だけを調べる。
+ * テスト予約も本番の予約と同じように表示する（画面では「テスト」と添えて見分けられるようにする）
+ */
 function checkinListStatement(c: Context<KioskEnv>) {
   const today = jstNow().date;
   return c.var.db
     .prepare(
-      `SELECT r.id AS reservation_id, g.id AS guest_id, g.seq, g.full_name, g.checked_in_at
+      `SELECT r.id AS reservation_id, r.is_test, g.id AS guest_id, g.seq, g.full_name, g.checked_in_at
        FROM reservations r JOIN guests g ON g.reservation_id = r.id
        WHERE r.check_out_date >= ?1 AND r.check_in_date <= ?1 AND r.status = 'confirmed' AND r.stay_status <> 'checked_out'
-         AND r.is_test = ?2 AND g.status = 'approved'
+         AND g.status = 'approved'
        ORDER BY r.check_in_date, g.seq LIMIT 60`,
     )
-    .bind(today, c.var.testMode ? 1 : 0);
+    .bind(today);
 }
 
 kioskRoutes.get("/checkin", async (c) => {
   const rows = await c.var.db.all<CheckinRow>(checkinListStatement(c));
   return c.json({
-    guests: rows.map((r) => ({ guestId: r.guest_id, name: r.full_name ?? "", done: r.checked_in_at !== null })),
+    guests: rows.map((r) => ({
+      guestId: r.guest_id,
+      name: r.full_name ?? "",
+      done: r.checked_in_at !== null,
+      isTest: r.is_test === 1,
+    })),
   });
 });
 
@@ -214,16 +223,18 @@ function checkoutListStatement(c: Context<KioskEnv>) {
   // 予定より早いチェックアウト、予定日を過ぎたチェックアウトの両方に対応する
   return c.var.db
     .prepare(
-      `SELECT id, display_name FROM reservations
-       WHERE check_out_date >= ? AND check_in_date <= ? AND stay_status = 'in_house' AND is_test = ?
+      `SELECT id, display_name, is_test FROM reservations
+       WHERE check_out_date >= ? AND check_in_date <= ? AND stay_status = 'in_house'
        ORDER BY check_in_date LIMIT 10`,
     )
-    .bind(addDays(today, -3), today, c.var.testMode ? 1 : 0);
+    .bind(addDays(today, -3), today);
 }
 
 kioskRoutes.get("/checkout", async (c) => {
-  const rows = await c.var.db.all<{ id: string; display_name: string | null }>(checkoutListStatement(c));
-  return c.json({ reservations: rows.map((r) => ({ reservationId: r.id, name: r.display_name ?? "" })) });
+  const rows = await c.var.db.all<{ id: string; display_name: string | null; is_test: number }>(checkoutListStatement(c));
+  return c.json({
+    reservations: rows.map((r) => ({ reservationId: r.id, name: r.display_name ?? "", isTest: r.is_test === 1 })),
+  });
 });
 
 kioskRoutes.post("/reservations/:id/checkout", async (c) => {
