@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api";
 import { navigate, usePathname } from "../lib/router";
 import { CalendarPage } from "./CalendarPage";
+import { LedgerPage } from "./LedgerPage";
 import { ReservationForm } from "./ReservationForm";
 import { ReservationPage } from "./ReservationPage";
 import { SettingsPage } from "./SettingsPage";
@@ -13,13 +14,13 @@ interface Me {
 
 const NAV = [
   { path: "/admin", label: "カレンダー" },
-  { path: "/admin/photos", label: "写真台帳" },
+  { path: "/admin/photos", label: "名簿・写真台帳" },
   { path: "/admin/settings", label: "設定" },
 ];
 
 function AdminRoute({ pathname, me }: { pathname: string; me: Me }) {
   if (pathname === "/admin/settings") return <SettingsPage me={me} />;
-  if (pathname === "/admin/photos") return <p className="note">写真台帳は段階 5 で作ります。</p>;
+  if (pathname === "/admin/photos") return <LedgerPage />;
   if (pathname === "/admin/reservations/new") return <ReservationForm />;
   const edit = /^\/admin\/reservations\/([^/]+)\/edit$/.exec(pathname);
   if (edit) return <ReservationForm editId={edit[1]} />;

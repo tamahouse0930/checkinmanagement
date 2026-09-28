@@ -17,6 +17,7 @@ export interface GuestFields {
 }
 
 export interface GuestView extends GuestFields {
+  id: string;
   seq: number;
   status: GuestStatus;
   enteredBy: EnteredBy;

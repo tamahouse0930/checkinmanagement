@@ -177,6 +177,9 @@ reservationRoutes.get("/calendar", async (c) => {
   }
   if (!googleLink) alerts.push("Google ドライブ・Gmail と連携されていません（設定画面から連携してください）");
   else if (googleLink.last_error) alerts.push(googleLink.last_error);
+  if (property.missing_photo_count > 0) {
+    alerts.push(`Google ドライブで見つからない写真が ${property.missing_photo_count} 件あります（写真台帳で確認してください）`);
+  }
 
   const body: CalendarResponse = {
     month,

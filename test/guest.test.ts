@@ -3,6 +3,20 @@ import { EMPTY_GUEST, type GuestFields, missingFields, normalizeGuest } from "..
 import { detectLang } from "../src/shared/langs";
 import { DEFAULT_TEXTS, renderTemplate } from "../src/shared/templates";
 import { deleteAfterFor, detectImageType, photoFileName } from "../src/worker/services/photos";
+import { retentionCutoff } from "../src/worker/services/retention";
+
+describe("3 年後の削除の境目（要件定義書 D-01）", () => {
+  it("今日から 3 年前の日付より前にチェックアウトした予約が対象", () => {
+    expect(retentionCutoff("2029-10-05")).toBe("2026-10-05");
+    expect(retentionCutoff("2031-02-29")).toBe("2028-03-01");
+  });
+
+  it("写真の削除予定日と、名簿の削除の境目が同じ日になる", () => {
+    const checkOut = "2026-10-05";
+    // 削除予定日（チェックアウト日の 3 年後）の当日には、チェックアウト日は境目と同じになる
+    expect(retentionCutoff(deleteAfterFor(checkOut))).toBe(checkOut);
+  });
+});
 
 const japanese: GuestFields = {
   ...EMPTY_GUEST,

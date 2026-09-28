@@ -102,7 +102,7 @@ async function buildView(c: Context<AppEnv>, guests: GuestRow[]): Promise<Regist
   };
 }
 
-const guestPatchSchema = z
+export const guestPatchSchema = z
   .object({
     isJapanese: z.boolean().nullable(),
     fullName: z.string().max(200),
@@ -328,7 +328,7 @@ representativeRoutes.post("/submit", async (c) => {
     countersStatement(db, r.id, now),
   ]);
 
-  await renamePhotosForGuests(c.env, db, pending).catch((e) =>
+  await renamePhotosForGuests(c.env, db, r.id, pending).catch((e) =>
     console.error(JSON.stringify({ event: "photo_rename_failed", message: String(e) })),
   );
   const origin = new URL(c.req.url).origin;

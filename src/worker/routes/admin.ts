@@ -9,6 +9,8 @@ import { nowIso } from "../lib/time";
 import { requireAdmin } from "../middleware/admin";
 import { sendMail } from "../services/google/gmail";
 import { forgetDevice } from "./kiosk";
+import { adminGuestRoutes } from "./admin-guests";
+import { ledgerRoutes } from "./ledger";
 import { reservationRoutes } from "./reservations";
 import { LANGS } from "../../shared/langs";
 import { DEFAULT_TEXTS, TEXT_KINDS, type TextKind } from "../../shared/templates";
@@ -16,6 +18,8 @@ import { DEFAULT_TEXTS, TEXT_KINDS, type TextKind } from "../../shared/templates
 export const adminRoutes = new Hono<AppEnv>();
 adminRoutes.use("*", requireAdmin);
 adminRoutes.route("/", reservationRoutes);
+adminRoutes.route("/", adminGuestRoutes);
+adminRoutes.route("/", ledgerRoutes);
 
 function badRequest(message: string) {
   return { error: { code: "bad_request", message } };

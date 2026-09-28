@@ -1200,3 +1200,80 @@ label.check.inline {
   border-radius: 999px;
   padding: 0 10px;
 }
+
+/* ---- 名簿・写真台帳 ---- */
+
+.ledger-search {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+}
+
+@media (max-width: 700px) {
+  .ledger-search {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.ledger-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.ledger-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.ledger-grid figure {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.ledger-grid img {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.ledger-grid .no-photo {
+  height: 140px;
+}
+
+.ledger-grid figcaption {
+  display: grid;
+  gap: 2px;
+  font-size: 0.8rem;
+  margin-top: 4px;
+  word-break: break-all;
+}
+
+.ledger-grid .file-name {
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+}
+
+.missing-photo {
+  border-color: var(--danger) !important;
+  background: #fff7f6;
+}
+
+.guest-admin-actions {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.guest-admin-form {
+  margin-top: 8px;
+}
+
+.inline-check {
+  align-self: end;
+}

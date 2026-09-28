@@ -121,6 +121,30 @@ export async function deleteFile(env: Env, db: Db, fileId: string): Promise<void
   await driveFetch(token, `${DRIVE_FILES}/${fileId}`, { method: "DELETE" });
 }
 
+/**
+ * このアプリが作った写真のファイル ID の一覧（フォルダを除く）。権限が drive.file なので、
+ * 管理者が自分で置いた他のファイルは含まれない。1 回で最大 1,000 件、最大 5 回まで取得する
+ */
+export async function listAppFileIds(env: Env, db: Db): Promise<Set<string>> {
+  const token = await getGoogleAccessToken(env, db);
+  const ids = new Set<string>();
+  let pageToken: string | undefined;
+  for (let page = 0; page < 5; page++) {
+    const params = new URLSearchParams({
+      q: `mimeType != '${FOLDER_MIME}' and trashed = false`,
+      fields: "nextPageToken, files(id)",
+      pageSize: "1000",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+    const res = await driveFetch(token, `${DRIVE_FILES}?${params}`);
+    const body = (await res.json()) as { nextPageToken?: string; files?: { id: string }[] };
+    for (const f of body.files ?? []) ids.add(f.id);
+    pageToken = body.nextPageToken;
+    if (!pageToken) break;
+  }
+  return ids;
+}
+
 /** ファイルの中身を取得する。見つからなければ null */
 export async function downloadFile(env: Env, db: Db, fileId: string): Promise<Response | null> {
   const token = await getGoogleAccessToken(env, db);

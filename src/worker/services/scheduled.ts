@@ -5,6 +5,7 @@ import { getSettings } from "../lib/settings";
 import { DAY_MS, nowIso } from "../lib/time";
 import { deleteFile } from "./google/drive";
 import { notifyHost } from "./notify";
+import { purgeExpired, reconcilePhotos } from "./retention";
 import { syncAll } from "./sync";
 
 /** 1 日 1 回の処理を、その日にまだ実行していなければ実行済みとして記録し true を返す（設計書 4.11） */
@@ -104,6 +105,12 @@ export async function runScheduled(env: Env, origin: string | null = null): Prom
     if (now.hour >= 5 && (await claimDailyJob(db, "daily_morning", now.date))) {
       await syncAll(env, db);
       await purgeTestReservations(env, db);
+    }
+    // 3 年を過ぎた名簿・写真の削除と写真の突き合わせは、取り込みと別の実行（6 時以降）で行う。
+    // 1 回の処理で外部へのリクエストは 50 件までという制限に収めるため
+    if (now.hour >= 6 && (await claimDailyJob(db, "daily_cleanup", now.date))) {
+      await purgeExpired(env, db);
+      await reconcilePhotos(env, db).catch((e) => console.error(JSON.stringify({ event: "reconcile_failed", message: String(e) })));
     }
     if (now.hour >= 18 && (await claimDailyJob(db, "evening_unregistered", now.date))) {
       await notifyUnregistered(env, db, origin);

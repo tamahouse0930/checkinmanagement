@@ -12,6 +12,7 @@ export interface PropertyRow {
   drive_root_folder_id: string | null;
   revoked_sessions: string;
   settings_version: number;
+  missing_photo_count: number;
   updated_at: string;
 }
 

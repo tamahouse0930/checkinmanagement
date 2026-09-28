@@ -109,18 +109,32 @@ export async function saveKioskPhoto(
 type FolderTargetRow = Parameters<typeof ensureReservationFolder>[2] & { check_out_date: string };
 
 /** 送信時に、写真のファイル名を入力された氏名に合わせる（撮影時は氏名が未入力のことがあるため） */
-export async function renamePhotosForGuests(env: Env, db: Db, guests: GuestRow[]): Promise<void> {
-  const ids = guests.map((g) => g.id_photo_id).filter((id): id is string => Boolean(id));
-  if (ids.length === 0) return;
-  const photos = await db.all<{ id: string; guest_id: string; drive_file_id: string; file_name: string }>(
-    db.prepare(`SELECT id, guest_id, drive_file_id, file_name FROM photos WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids),
+/**
+ * 写真のファイル名を、宿泊者の番号・氏名に合わせる（身分証の写真と当日の写真の両方）。
+ * 送信時（撮影時は氏名が未入力のことがあるため）と、管理者が氏名や番号を変えたときに呼ぶ
+ */
+export async function renamePhotosForGuests(
+  env: Env,
+  db: Db,
+  reservationId: string,
+  guests: Pick<GuestRow, "id" | "seq" | "full_name">[],
+): Promise<void> {
+  if (guests.length === 0) return;
+  const ids = guests.map((g) => g.id);
+  const photos = await db.all<{ id: string; guest_id: string; kind: "id" | "kiosk"; drive_file_id: string; file_name: string }>(
+    db
+      .prepare(
+        `SELECT id, guest_id, kind, drive_file_id, file_name FROM photos
+         WHERE reservation_id = ? AND guest_id IN (${ids.map(() => "?").join(",")})`,
+      )
+      .bind(reservationId, ...ids),
   );
   const stmts: D1PreparedStatement[] = [];
   for (const photo of photos) {
     const guest = guests.find((g) => g.id === photo.guest_id);
     if (!guest) continue;
     const ext = photo.file_name.split(".").pop() ?? "jpg";
-    const name = photoFileName(guest.seq, guest.full_name, "id", ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg");
+    const name = photoFileName(guest.seq, guest.full_name, photo.kind, ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg");
     if (name === photo.file_name) continue;
     await renameFile(env, db, photo.drive_file_id, name);
     stmts.push(db.prepare("UPDATE photos SET file_name = ? WHERE id = ?").bind(name, photo.id));

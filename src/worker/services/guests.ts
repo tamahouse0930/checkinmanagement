@@ -85,6 +85,7 @@ export function toFields(row: GuestRow | null): GuestFields {
 export function toView(row: GuestRow, origin: string): GuestView {
   return {
     ...toFields(row),
+    id: row.id,
     seq: row.seq,
     status: row.status,
     enteredBy: row.entered_by,

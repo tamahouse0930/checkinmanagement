@@ -45,6 +45,10 @@ app.route("/api/kiosk", kioskRoutes);
 
 app.notFound((c) => c.json({ error: { code: "not_found", message: "見つかりません" } }, 404));
 app.onError((error, c) => {
+  // 送られてきた内容が JSON として読めない場合は、サーバーの不具合ではなく入力の誤り
+  if (error instanceof SyntaxError) {
+    return c.json({ error: { code: "bad_request", message: "入力内容を読み取れませんでした" } }, 400);
+  }
   console.error(JSON.stringify({ event: "unhandled_error", route: c.req.routePath, message: String(error) }));
   return c.json({ error: { code: "internal", message: "エラーが発生しました" } }, 500);
 });

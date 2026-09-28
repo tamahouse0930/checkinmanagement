@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { resizeImage } from "../registration/photo";
+import { GuestForm } from "./GuestForm";
 import type { ReservationDetail } from "../../shared/api-types";
 import { diffDays, formatDateJa } from "../../shared/dates";
 import type { GuestView } from "../../shared/guest";
@@ -88,8 +90,59 @@ function MessageBlock(props: {
   );
 }
 
-function GuestCard({ g, phoneLast4 }: { g: GuestView; phoneLast4: string | null }) {
+/** 写真を選んで縮小してから送る（管理者による差し替え） */
+async function uploadAdminPhoto(guestId: string, file: File): Promise<void> {
+  const form = new FormData();
+  form.append("file", await resizeImage(file), "photo.jpg");
+  const res = await fetch(`/api/admin/guests/${guestId}/photo`, { method: "PUT", body: form, credentials: "same-origin" });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+    throw new Error(data?.error?.message ?? `写真を保存できませんでした（${res.status}）`);
+  }
+}
+
+function GuestCard({
+  g,
+  phoneLast4,
+  editable,
+  act,
+}: {
+  g: GuestView;
+  phoneLast4: string | null;
+  editable: boolean;
+  act: (action: () => Promise<unknown>, done: string) => Promise<void>;
+}) {
   const contactMatches = phoneLast4 && g.contact.replace(/\D/g, "").endsWith(phoneLast4);
+  const [editing, setEditing] = useState(false);
+  const photoInput = useRef<HTMLInputElement>(null);
+
+  const remove = () => {
+    const reason = prompt(`${g.fullName || `${g.seq}人目`} を名簿から削除します。理由を入力してください（来なかった、など）`);
+    if (!reason?.trim()) return;
+    act(() => api(`/api/admin/guests/${g.id}`, { method: "DELETE", body: { reason } }), "宿泊者を削除しました");
+  };
+
+  if (editing) {
+    return (
+      <div className="guest-card">
+        <strong>
+          {g.seq}. {g.fullName || "（未入力）"} の修正
+        </strong>
+        <GuestForm
+          initial={g}
+          submitLabel="保存"
+          withReason
+          onCancel={() => setEditing(false)}
+          onSubmit={async (fields, reason) => {
+            await api(`/api/admin/guests/${g.id}`, { method: "PATCH", body: { ...fields, reason } });
+            setEditing(false);
+            await act(async () => undefined, "修正しました（変更前の内容は記録に残ります）");
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="guest-card">
       <div className="guest-card-head">
@@ -128,7 +181,9 @@ function GuestCard({ g, phoneLast4 }: { g: GuestView; phoneLast4: string | null 
           <dt>16 歳未満</dt>
           <dd>{g.isUnder16 ? "はい" : "いいえ"}</dd>
           <dt>入力</dt>
-          <dd>{g.enteredBy === "self" ? `本人が入力${g.consented ? "（本人の同意あり）" : ""}` : "代表者が入力"}</dd>
+          <dd>
+            {g.enteredBy === "self" ? `本人が入力${g.consented ? "（本人の同意あり）" : ""}` : g.enteredBy === "admin" ? "管理者が追加" : "代表者が入力"}
+          </dd>
         </dl>
         <div className="guest-photo">
           {g.idPhotoId ? (
@@ -141,6 +196,58 @@ function GuestCard({ g, phoneLast4 }: { g: GuestView; phoneLast4: string | null 
           <small>{g.isJapanese === false ? "パスポート" : "身分証"}</small>
         </div>
       </div>
+      {editable && (
+        <div className="actions guest-admin-actions">
+          <button className="button" onClick={() => setEditing(true)}>
+            修正
+          </button>
+          <input
+            ref={photoInput}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) act(() => uploadAdminPhoto(g.id, file), "身分証の写真を差し替えました");
+            }}
+          />
+          <button className="button" onClick={() => photoInput.current?.click()}>
+            写真を差し替え
+          </button>
+          {g.seq > 1 && !g.checkedInAt && (
+            <button className="button danger" onClick={remove}>
+              削除
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 管理者による宿泊者の追加（予約サイトのメッセージで情報を受け取った場合など） */
+function AddGuest({ reservationId, act }: { reservationId: string; act: (action: () => Promise<unknown>, done: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <button className="button" onClick={() => setOpen(true)}>
+        ＋ 宿泊者を追加
+      </button>
+    );
+  }
+  return (
+    <div className="guest-card">
+      <strong>宿泊者の追加（承認済みとして登録します。身分証の写真は追加した後に「写真を差し替え」で登録してください）</strong>
+      <GuestForm
+        submitLabel="追加"
+        onCancel={() => setOpen(false)}
+        onSubmit={async (fields) => {
+          await api(`/api/admin/reservations/${reservationId}/guests`, { method: "POST", body: fields });
+          setOpen(false);
+          await act(async () => undefined, "宿泊者を追加しました");
+        }}
+      />
     </div>
   );
 }
@@ -482,9 +589,14 @@ export function ReservationPage({ id }: { id: string }) {
           {r.consentForCompanions && <p className="note">代表者が「同行者全員から同意を得ています」にチェックしています。</p>}
           <div className="guest-cards">
             {r.guests.map((g) => (
-              <GuestCard key={g.seq} g={g} phoneLast4={r.phoneLast4} />
+              <GuestCard key={g.id} g={g} phoneLast4={r.phoneLast4} editable={r.status === "confirmed"} act={act} />
             ))}
           </div>
+          {r.status === "confirmed" && (
+            <div className="actions">
+              <AddGuest reservationId={r.id} act={act} />
+            </div>
+          )}
           {canJudge ? (
             <div className="actions">
               <button className="button primary" onClick={approve}>
