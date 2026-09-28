@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { AdminApp } from "./admin/AdminApp";
 import { HomePage } from "./public/HomePage";
 import { PrivacyPage } from "./public/PrivacyPage";
+import { RegistrationApp } from "./registration/RegistrationApp";
 import "./styles.css";
 
 function Placeholder({ title }: { title: string }) {
@@ -17,7 +18,8 @@ function Placeholder({ title }: { title: string }) {
 function Root() {
   const path = location.pathname;
   if (path === "/admin" || path.startsWith("/admin/")) return <AdminApp />;
-  if (path.startsWith("/r/") || path.startsWith("/g/")) return <Placeholder title="宿泊者入力画面" />;
+  const reg = /^\/(r|g)\/([A-Za-z0-9_-]{16,64})$/.exec(path);
+  if (reg) return <RegistrationApp role={reg[1] as "r" | "g"} token={reg[2]} />;
   if (path.startsWith("/kiosk")) return <Placeholder title="チェックイン・チェックアウト画面" />;
   if (path === "/privacy") return <PrivacyPage />;
   if (path === "/") return <HomePage />;

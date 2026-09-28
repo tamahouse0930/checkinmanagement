@@ -1,5 +1,6 @@
 import type { Db } from "./lib/db";
 import type { SessionPayload } from "./lib/session";
+import type { ReservationRow } from "./services/guests";
 
 export interface Env {
   DB: D1Database;
@@ -17,5 +18,9 @@ export type AppEnv = {
   Variables: {
     db: Db;
     admin: SessionPayload;
+    /** 宿泊者入力画面の URL のトークンから引いた予約 */
+    reservation: ReservationRow;
+    /** 同行者用の URL の場合、その同行者の番号 */
+    companionSeq: number | null;
   };
 };

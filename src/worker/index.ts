@@ -4,6 +4,7 @@ import { Db } from "./lib/db";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
 import { publicRoutes } from "./routes/public";
+import { companionRoutes, representativeRoutes } from "./routes/registration";
 import { runScheduled } from "./services/scheduled";
 
 const app = new Hono<AppEnv>();
@@ -37,6 +38,8 @@ app.use("*", async (c, next) => {
 app.route("/auth/google", authRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/public", publicRoutes);
+app.route("/api/r", representativeRoutes);
+app.route("/api/g", companionRoutes);
 
 app.notFound((c) => c.json({ error: { code: "not_found", message: "見つかりません" } }, 404));
 app.onError((error, c) => {

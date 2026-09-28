@@ -9,6 +9,8 @@ import { nowIso } from "../lib/time";
 import { requireAdmin } from "../middleware/admin";
 import { sendMail } from "../services/google/gmail";
 import { reservationRoutes } from "./reservations";
+import { LANGS } from "../../shared/langs";
+import { DEFAULT_TEXTS, TEXT_KINDS, type TextKind } from "../../shared/templates";
 
 export const adminRoutes = new Hono<AppEnv>();
 adminRoutes.use("*", requireAdmin);
@@ -192,6 +194,35 @@ adminRoutes.put("/settings", async (c) => {
       )
       .bind(s.name, s.checkinTime, s.checkoutTime, s.operatorName, s.operatorContact, nowIso(), PROPERTY_ID),
     auditStatement(db, `admin:${c.var.admin.email}`, "update_settings"),
+  ]);
+  invalidateSettings();
+  return c.json({ ok: true });
+});
+
+// ---- 文面（案内文・ハウスルールなど。言語ごと） ----
+
+adminRoutes.get("/texts", async (c) => {
+  const { texts } = await getSettings(c.var.db);
+  return c.json({ texts: Object.fromEntries(texts), defaults: DEFAULT_TEXTS });
+});
+
+adminRoutes.put("/texts", async (c) => {
+  const parsed = z
+    .object({ kind: z.enum(TEXT_KINDS as [TextKind, ...TextKind[]]), lang: z.enum(LANGS), body: z.string().max(3000) })
+    .safeParse(await c.req.json());
+  if (!parsed.success) return c.json(badRequest("入力内容を確認してください"), 400);
+  const { kind, lang, body } = parsed.data;
+  const db = c.var.db;
+  // 空にしたら既定の文面に戻す（行を消す）
+  await db.batch([
+    body.trim()
+      ? db
+          .prepare(
+            "INSERT INTO property_texts (property_id, kind, lang, body) VALUES (?, ?, ?, ?) ON CONFLICT (property_id, kind, lang) DO UPDATE SET body = excluded.body",
+          )
+          .bind(PROPERTY_ID, kind, lang, body.trim())
+      : db.prepare("DELETE FROM property_texts WHERE property_id = ? AND kind = ? AND lang = ?").bind(PROPERTY_ID, kind, lang),
+    auditStatement(db, `admin:${c.var.admin.email}`, "update_text", `${kind}:${lang}`),
   ]);
   invalidateSettings();
   return c.json({ ok: true });

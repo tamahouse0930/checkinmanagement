@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { LANG_NAME, LANGS, type Lang } from "../../shared/langs";
+import { TEXT_KIND_LABEL, TEXT_KINDS, TEXT_PLACEHOLDERS, type TextKind } from "../../shared/templates";
 import { api } from "../lib/api";
 
 interface SettingsResponse {
@@ -296,6 +298,85 @@ function IcalSection() {
   );
 }
 
+/** 案内文・ハウスルールなどの文面（言語ごと）。空にして保存すると既定の文面に戻る */
+function TextsSection() {
+  const [data, setData] = useState<{ texts: Record<string, string>; defaults: Record<string, Record<Lang, string>> } | null>(null);
+  const [kind, setKind] = useState<TextKind>("invite");
+  const [lang, setLang] = useState<Lang>("ja");
+  const [body, setBody] = useState("");
+  const { message, run } = useMessage();
+
+  const load = () => api<NonNullable<typeof data>>("/api/admin/texts").then(setData);
+  useEffect(() => {
+    load();
+  }, []);
+
+  const current = data?.texts[`${kind}:${lang}`];
+  const fallback = data?.defaults[kind]?.[lang] ?? "";
+  useEffect(() => {
+    setBody(current ?? fallback);
+  }, [data, kind, lang]);
+
+  const save = () =>
+    run(async () => {
+      await api("/api/admin/texts", { method: "PUT", body: { kind, lang, body: body === fallback ? "" : body } });
+      await load();
+    }, "保存しました");
+
+  const reset = () =>
+    run(async () => {
+      await api("/api/admin/texts", { method: "PUT", body: { kind, lang, body: "" } });
+      await load();
+    }, "既定の文面に戻しました");
+
+  return (
+    <section className="card">
+      <h2>文面</h2>
+      <p className="note">案内文は予約詳細でコピーして使います。ハウスルールはゲストの同意画面に、連絡方法はタブレットに表示します。</p>
+      <div className="form">
+        <div className="row">
+          <label>
+            種類
+            <select value={kind} onChange={(e) => setKind(e.target.value as TextKind)}>
+              {TEXT_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {TEXT_KIND_LABEL[k]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            言語
+            <select value={lang} onChange={(e) => setLang(e.target.value as Lang)}>
+              {LANGS.map((l) => (
+                <option key={l} value={l}>
+                  {LANG_NAME[l]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {TEXT_PLACEHOLDERS[kind] && <p className="note">差し込み: {TEXT_PLACEHOLDERS[kind]}</p>}
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} maxLength={3000} />
+        <p className="note">
+          {current ? "編集済みの文面です。" : fallback ? "既定の文面です。" : "未設定です（他の言語の文面がある場合は、英語・日本語の順に代わりに使います）。"}
+        </p>
+        <div className="actions">
+          <button className="button primary" onClick={save}>
+            保存
+          </button>
+          {current && (
+            <button className="button" onClick={reset}>
+              {fallback ? "既定の文面に戻す" : "削除"}
+            </button>
+          )}
+        </div>
+      </div>
+      <Message message={message} />
+    </section>
+  );
+}
+
 function SessionsSection() {
   const [rows, setRows] = useState<SessionRow[]>([]);
   const { message, run } = useMessage();
@@ -354,6 +435,7 @@ export function SettingsPage({ me }: { me: { email: string } }) {
       <GoogleSection google={settings.google} />
       <IcalSection />
       <BasicSection initial={settings.property} onSaved={load} />
+      <TextsSection />
       <EmailListSection
         title="通知メールの宛先"
         description="登録したすべてのアドレスに、通知メールを 1 通で送ります。"

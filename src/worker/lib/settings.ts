@@ -1,3 +1,5 @@
+import type { Lang } from "../../shared/langs";
+import { DEFAULT_TEXTS, type TextKind } from "../../shared/templates";
 import type { Db } from "./db";
 
 export interface PropertyRow {
@@ -33,6 +35,18 @@ export interface Settings {
   recipients: string[];
   revokedSids: Set<string>;
   googleLink: GoogleLinkRow | null;
+  /** 管理者が編集した文面。キーは `種類:言語` */
+  texts: Map<string, string>;
+}
+
+/**
+ * 文面を取り出す。その言語の文面がなければ英語、既定の文面、日本語の順に探す（要件定義書 L-07）
+ */
+export function getText(settings: Settings, kind: TextKind, lang: Lang): string {
+  const own = settings.texts.get(`${kind}:${lang}`);
+  if (own) return own;
+  if (kind === "invite" || kind === "code" || kind === "reject") return DEFAULT_TEXTS[kind][lang];
+  return settings.texts.get(`${kind}:en`) ?? settings.texts.get(`${kind}:ja`) ?? "";
 }
 
 export const PROPERTY_ID = "main";
@@ -48,13 +62,14 @@ export async function getSettings(db: Db): Promise<Settings> {
   const now = Date.now();
   if (cache && cache.expires > now) return cache.value;
 
-  const [property, accounts, recipients, link] = await db.batch([
+  const [property, accounts, recipients, link, texts] = await db.batch([
     db.prepare("SELECT * FROM properties WHERE id = ?").bind(PROPERTY_ID),
     db.prepare("SELECT email FROM admin_accounts LIMIT 50"),
     db.prepare("SELECT email FROM notify_recipients LIMIT 50"),
     db.prepare(
       "SELECT account_email, scopes, refresh_token_enc, linked_at, last_error FROM google_link WHERE id = 1",
     ),
+    db.prepare("SELECT kind, lang, body FROM property_texts WHERE property_id = ? LIMIT 100").bind(PROPERTY_ID),
   ]);
 
   const propertyRow = property.results[0] as PropertyRow | undefined;
@@ -66,6 +81,9 @@ export async function getSettings(db: Db): Promise<Settings> {
     recipients: (recipients.results as { email: string }[]).map((r) => r.email),
     revokedSids: new Set(parseRevoked(propertyRow.revoked_sessions).map((r) => r.sid)),
     googleLink: (link.results[0] as GoogleLinkRow | undefined) ?? null,
+    texts: new Map(
+      (texts.results as { kind: string; lang: string; body: string }[]).map((r) => [`${r.kind}:${r.lang}`, r.body]),
+    ),
   };
   cache = { value, expires: now + CACHE_TTL_MS };
   return value;

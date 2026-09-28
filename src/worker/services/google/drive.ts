@@ -4,24 +4,38 @@ import { nowIso } from "../../lib/time";
 import { getSettings, invalidateSettings, PROPERTY_ID } from "../../lib/settings";
 import { getGoogleAccessToken } from "./token";
 
+/** Google ドライブの操作（設計書 3.4）。権限は drive.file（このアプリが作ったファイルだけ）なので、他のファイルには触れない */
+
 const DRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
+const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
+const FOLDER_MIME = "application/vnd.google-apps.folder";
 export const ROOT_FOLDER_NAME = "TAMAHOUSE宿泊者写真";
 
+export class DriveError extends Error {}
+
+async function driveFetch(token: string, url: string, init: RequestInit = {}): Promise<Response> {
+  const res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) } });
+  if (!res.ok && res.status !== 404) throw new DriveError(`Google ドライブの操作に失敗しました（HTTP ${res.status}）`);
+  return res;
+}
+
 async function createFolder(token: string, name: string, parentId?: string): Promise<string> {
-  const res = await fetch(`${DRIVE_FILES}?fields=id`, {
+  const res = await driveFetch(token, `${DRIVE_FILES}?fields=id`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name,
-      mimeType: "application/vnd.google-apps.folder",
-      ...(parentId ? { parents: [parentId] } : {}),
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, mimeType: FOLDER_MIME, ...(parentId ? { parents: [parentId] } : {}) }),
   });
-  if (!res.ok) throw new Error(`Google ドライブにフォルダを作れませんでした（HTTP ${res.status}）`);
   return ((await res.json()) as { id: string }).id;
 }
 
-/** 写真の保存先のフォルダ（設計書 3.4）がなければ作り、ID を返す */
+async function findOrCreateFolder(token: string, name: string, parentId: string): Promise<string> {
+  const q = `name = '${name.replace(/'/g, "\\'")}' and '${parentId}' in parents and mimeType = '${FOLDER_MIME}' and trashed = false`;
+  const res = await driveFetch(token, `${DRIVE_FILES}?fields=files(id)&pageSize=1&q=${encodeURIComponent(q)}`);
+  const found = ((await res.json()) as { files?: { id: string }[] }).files?.[0];
+  return found?.id ?? createFolder(token, name, parentId);
+}
+
+/** 写真の保存先のフォルダ（TAMAHOUSE宿泊者写真）がなければ作り、ID を返す */
 export async function ensureRootFolder(env: Env, db: Db): Promise<string> {
   const { property } = await getSettings(db);
   if (property.drive_root_folder_id) return property.drive_root_folder_id;
@@ -37,4 +51,79 @@ export async function ensureRootFolder(env: Env, db: Db): Promise<string> {
   );
   invalidateSettings();
   return folderId;
+}
+
+export interface FolderTarget {
+  id: string;
+  is_test: number;
+  check_in_date: string;
+  channel: string;
+  reservation_code: string | null;
+  drive_folder_id: string | null;
+}
+
+const CHANNEL_NAME: Record<string, string> = { airbnb: "Airbnb", booking: "Booking", other: "Other" };
+
+/** 宿泊ごとのフォルダ（例: 2026/2026-10-03_Airbnb_HMABCD1234。テスト予約は _test の下）を用意する */
+export async function ensureReservationFolder(env: Env, db: Db, r: FolderTarget): Promise<string> {
+  if (r.drive_folder_id) return r.drive_folder_id;
+  const root = await ensureRootFolder(env, db);
+  const token = await getGoogleAccessToken(env, db);
+  const parent = await findOrCreateFolder(token, r.is_test ? "_test" : r.check_in_date.slice(0, 4), root);
+  const name = `${r.check_in_date}_${CHANNEL_NAME[r.channel] ?? r.channel}_${r.reservation_code ?? r.id.slice(0, 5)}`;
+  const folderId = await createFolder(token, name, parent);
+  await db.run(db.prepare("UPDATE reservations SET drive_folder_id = ? WHERE id = ?").bind(folderId, r.id));
+  return folderId;
+}
+
+export async function uploadFile(
+  env: Env,
+  db: Db,
+  folderId: string,
+  name: string,
+  bytes: Uint8Array,
+  mimeType: string,
+): Promise<{ id: string; size: number }> {
+  const token = await getGoogleAccessToken(env, db);
+  const boundary = `th${crypto.randomUUID().replace(/-/g, "")}`;
+  const head = new TextEncoder().encode(
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+      JSON.stringify({ name, parents: [folderId] }) +
+      `\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`,
+  );
+  const tail = new TextEncoder().encode(`\r\n--${boundary}--\r\n`);
+  const body = new Uint8Array(head.length + bytes.length + tail.length);
+  body.set(head);
+  body.set(bytes, head.length);
+  body.set(tail, head.length + bytes.length);
+
+  const res = await driveFetch(token, `${DRIVE_UPLOAD}?uploadType=multipart&fields=id,size`, {
+    method: "POST",
+    headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
+    body,
+  });
+  const file = (await res.json()) as { id: string; size?: string };
+  return { id: file.id, size: Number(file.size ?? bytes.length) };
+}
+
+export async function renameFile(env: Env, db: Db, fileId: string, name: string): Promise<void> {
+  const token = await getGoogleAccessToken(env, db);
+  await driveFetch(token, `${DRIVE_FILES}/${fileId}?fields=id`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+/** ファイルを削除する（すでにない場合は何もしない） */
+export async function deleteFile(env: Env, db: Db, fileId: string): Promise<void> {
+  const token = await getGoogleAccessToken(env, db);
+  await driveFetch(token, `${DRIVE_FILES}/${fileId}`, { method: "DELETE" });
+}
+
+/** ファイルの中身を取得する。見つからなければ null */
+export async function downloadFile(env: Env, db: Db, fileId: string): Promise<Response | null> {
+  const token = await getGoogleAccessToken(env, db);
+  const res = await driveFetch(token, `${DRIVE_FILES}/${fileId}?alt=media`);
+  return res.status === 404 ? null : res;
 }

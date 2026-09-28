@@ -15,9 +15,13 @@ import {
 import type { AppEnv } from "../env";
 import { auditStatement } from "../lib/audit";
 import { randomToken } from "../lib/crypto";
-import { getSettings, PROPERTY_ID } from "../lib/settings";
+import { getSettings, getText, PROPERTY_ID } from "../lib/settings";
 import { nowIso } from "../lib/time";
+import { downloadFile } from "../services/google/drive";
+import { countersStatement, type GuestRow, type ReservationRow, toView } from "../services/guests";
 import { syncAll } from "../services/sync";
+import { isLang, LANGS, type Lang } from "../../shared/langs";
+import { renderTemplate } from "../../shared/templates";
 
 /** カレンダー・一覧に必要な列だけ（宿泊者の個人情報は含めない） */
 const SUMMARY_COLUMNS = `id, channel, source, is_test, reservation_code, booker_name, display_name, check_in_date, check_out_date,
@@ -37,14 +41,7 @@ interface SummaryRow extends ProgressInput {
   guest_checked_in: number;
 }
 
-interface DetailRow extends SummaryRow {
-  phone_last4: string | null;
-  note: string | null;
-  status_locked: number;
-  guest_token: string | null;
-  created_at: string;
-  updated_at: string;
-}
+type DetailRow = ReservationRow;
 
 function toSummary(r: SummaryRow): ReservationSummary {
   return {
@@ -63,7 +60,22 @@ function toSummary(r: SummaryRow): ReservationSummary {
   };
 }
 
-function toDetail(c: Context<AppEnv>, r: DetailRow): ReservationDetail {
+async function toDetail(c: Context<AppEnv>, r: DetailRow, guests: GuestRow[]): Promise<ReservationDetail> {
+  const origin = new URL(c.req.url).origin;
+  const settings = await getSettings(c.var.db);
+  const guestUrl = r.guest_token ? `${origin}/r/${r.guest_token}` : null;
+  const values = {
+    name: settings.property.name,
+    url: guestUrl ?? "",
+    checkin_date: r.check_in_date,
+    checkout_date: r.check_out_date,
+    checkin_time: settings.property.checkin_time,
+    code: r.keybox_code ?? "",
+    reason: r.reject_reason ?? "",
+  };
+  const render = (kind: "invite" | "code" | "reject") =>
+    Object.fromEntries(LANGS.map((l) => [l, renderTemplate(getText(settings, kind, l), values)])) as Record<Lang, string>;
+
   return {
     ...toSummary(r),
     phoneLast4: r.phone_last4,
@@ -72,9 +84,24 @@ function toDetail(c: Context<AppEnv>, r: DetailRow): ReservationDetail {
     statusLocked: r.status_locked === 1,
     regStatus: r.reg_status as RegStatus,
     stayStatus: r.stay_status as StayStatus,
-    guestUrl: r.guest_token ? `${new URL(c.req.url).origin}/r/${r.guest_token}` : null,
+    guestUrl,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    lang: isLang(r.lang) ? r.lang : null,
+    rejectReason: r.reject_reason,
+    keyboxCode: r.keybox_code,
+    inviteSentAt: r.invite_sent_at,
+    codeSentAt: r.code_sent_at,
+    submittedAt: r.submitted_at,
+    approvedAt: r.approved_at,
+    consentForCompanions: r.consent_for_companions === 1,
+    guestPending: r.guest_pending,
+    guests: guests.map((g) => toView(g, origin)),
+    messages: {
+      invite: render("invite"),
+      code: r.keybox_code && r.reg_status === "approved" ? render("code") : null,
+      reject: r.reject_reason ? render("reject") : null,
+    },
   };
 }
 
@@ -89,6 +116,16 @@ function notFound() {
 async function loadDetail(c: Context<AppEnv>, id: string): Promise<DetailRow | null> {
   const db = c.var.db;
   return db.first<DetailRow>(db.prepare("SELECT * FROM reservations WHERE id = ?").bind(id));
+}
+
+/** 予約と宿泊者を 1 回の一括実行で読む（設計書 DB-02） */
+async function loadWithGuests(c: Context<AppEnv>, id: string): Promise<[DetailRow | null, GuestRow[]]> {
+  const db = c.var.db;
+  const [r, g] = await db.batch([
+    db.prepare("SELECT * FROM reservations WHERE id = ?").bind(id),
+    db.prepare("SELECT * FROM guests WHERE reservation_id = ? ORDER BY seq LIMIT 50").bind(id),
+  ]);
+  return [(r.results[0] as DetailRow | undefined) ?? null, g.results as GuestRow[]];
 }
 
 export const reservationRoutes = new Hono<AppEnv>();
@@ -205,9 +242,100 @@ reservationRoutes.post("/reservations", async (c) => {
 });
 
 reservationRoutes.get("/reservations/:id", async (c) => {
-  const row = await loadDetail(c, c.req.param("id"));
+  const [row, guests] = await loadWithGuests(c, c.req.param("id"));
   if (!row) return c.json(notFound(), 404);
-  return c.json(toDetail(c, row));
+  return c.json(await toDetail(c, row, guests));
+});
+
+/** 承認（追加分の承認も同じ。要件定義書 H-12、H-13） */
+reservationRoutes.post("/reservations/:id/approve", async (c) => {
+  const id = c.req.param("id");
+  const row = await loadDetail(c, id);
+  if (!row) return c.json(notFound(), 404);
+  const canApprove = row.reg_status === "submitted" || (row.reg_status === "approved" && row.guest_pending > 0);
+  if (!canApprove) return c.json(badRequest("承認できる登録がありません"), 400);
+  const db = c.var.db;
+  const now = nowIso();
+  await db.batch([
+    db.prepare("UPDATE guests SET status = 'approved', approved_at = ?, updated_at = ? WHERE reservation_id = ? AND status = 'submitted'").bind(now, now, id),
+    db
+      .prepare("UPDATE reservations SET reg_status = 'approved', approved_at = COALESCE(approved_at, ?), reject_reason = NULL WHERE id = ?")
+      .bind(now, id),
+    countersStatement(db, id, now),
+    auditStatement(db, `admin:${c.var.admin.email}`, "approve", id),
+  ]);
+  return c.json({ ok: true });
+});
+
+/** 差し戻し（理由が必須。要件定義書 H-12） */
+reservationRoutes.post("/reservations/:id/reject", async (c) => {
+  const id = c.req.param("id");
+  const parsed = z.object({ reason: z.string().trim().min(1).max(500) }).safeParse(await c.req.json());
+  if (!parsed.success) return c.json(badRequest("差し戻しの理由を入力してください"), 400);
+  const row = await loadDetail(c, id);
+  if (!row) return c.json(notFound(), 404);
+  const canReject = row.reg_status === "submitted" || (row.reg_status === "approved" && row.guest_pending > 0);
+  if (!canReject) return c.json(badRequest("差し戻しできる登録がありません"), 400);
+  const db = c.var.db;
+  const now = nowIso();
+  await db.batch([
+    // 送信済み（未承認）の人を入力済みに戻し、ゲストが修正できるようにする。承認済みの人はそのまま
+    db.prepare("UPDATE guests SET status = 'ready', updated_at = ? WHERE reservation_id = ? AND status = 'submitted'").bind(now, id),
+    db.prepare("UPDATE reservations SET reg_status = 'rejected', reject_reason = ? WHERE id = ?").bind(parsed.data.reason, id),
+    countersStatement(db, id, now),
+    auditStatement(db, `admin:${c.var.admin.email}`, "reject", id),
+  ]);
+  return c.json({ ok: true });
+});
+
+/** 暗証番号（予約ごと。要件定義書 H-14）。番号を変えたら送信済みの印を外す */
+reservationRoutes.put("/reservations/:id/keybox", async (c) => {
+  const id = c.req.param("id");
+  const parsed = z.object({ code: z.string().regex(/^\d{3,8}$/) }).safeParse(await c.req.json());
+  if (!parsed.success) return c.json(badRequest("暗証番号は数字 3〜8 桁で入力してください"), 400);
+  const db = c.var.db;
+  const result = await db.batch([
+    db
+      .prepare(
+        `UPDATE reservations SET code_sent_at = CASE WHEN keybox_code = ?1 THEN code_sent_at ELSE NULL END,
+           keybox_code = ?1, updated_at = ?2 WHERE id = ?3`,
+      )
+      .bind(parsed.data.code, nowIso(), id),
+    auditStatement(db, `admin:${c.var.admin.email}`, "set_keybox_code", id),
+  ]);
+  if ((result[0].meta.changes ?? 0) === 0) return c.json(notFound(), 404);
+  return c.json({ ok: true });
+});
+
+/** 案内文の送信済みの印（コピーした時点で付ける。要件定義書 H-10、H-14） */
+for (const [path, column] of [
+  ["invite-sent", "invite_sent_at"],
+  ["code-sent", "code_sent_at"],
+] as const) {
+  reservationRoutes.post(`/reservations/:id/${path}`, async (c) => {
+    const db = c.var.db;
+    await db.run(db.prepare(`UPDATE reservations SET ${column} = COALESCE(${column}, ?) WHERE id = ?`).bind(nowIso(), c.req.param("id")));
+    return c.json({ ok: true });
+  });
+  reservationRoutes.delete(`/reservations/:id/${path}`, async (c) => {
+    const db = c.var.db;
+    await db.run(db.prepare(`UPDATE reservations SET ${column} = NULL WHERE id = ?`).bind(c.req.param("id")));
+    return c.json({ ok: true });
+  });
+}
+
+/** 写真の表示（管理画面だけ。表示するたびに操作ログに記録する。要件定義書 S-12） */
+reservationRoutes.get("/photos/:id", async (c) => {
+  const db = c.var.db;
+  const id = c.req.param("id");
+  const photo = await db.first<{ drive_file_id: string }>(db.prepare("SELECT drive_file_id FROM photos WHERE id = ?").bind(id));
+  if (!photo) return c.json({ error: { code: "not_found", message: "写真が見つかりません" } }, 404);
+  const res = await downloadFile(c.env, db, photo.drive_file_id).catch(() => null);
+  if (!res) return c.json({ error: { code: "not_found", message: "Google ドライブに写真が見つかりません" } }, 404);
+  c.executionCtx.waitUntil(db.run(auditStatement(db, `admin:${c.var.admin.email}`, "view_photo", id)));
+  return new Response(res.body, {
+    headers: { "Content-Type": res.headers.get("Content-Type") ?? "image/jpeg", "Cache-Control": "private, no-store" },
+  });
 });
 
 /**
