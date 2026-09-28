@@ -322,7 +322,14 @@ function GuestEditor(props: {
               <>
                 <label className={bad("addressCountry")}>
                   {t.addressCountry}
-                  <CountrySelect lang={lang} value={g.addressCountry} placeholder={t.select} onChange={(v) => set("addressCountry", v)} disabled={disabled} />
+                  <CountrySelect
+                    lang={lang}
+                    value={g.addressCountry}
+                    placeholder={t.select}
+                    onChange={(v) => set("addressCountry", v)}
+                    disabled={disabled}
+                    pinned={["JP"]}
+                  />
                 </label>
                 <label className={bad("address")}>
                   {t.address}
