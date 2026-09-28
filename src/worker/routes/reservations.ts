@@ -470,14 +470,46 @@ reservationRoutes.delete("/reservations/:id", async (c) => {
     return c.json({ ok: true });
   }
 
-  // 本番の予約は、名簿を誤って消さないよう、宿泊者の登録が始まる前の手動登録だけ削除できる
-  if (row.source !== "manual") return c.json(badRequest("取り込んだ予約は削除できません（ブロックに変更してください）"), 400);
-  if (row.reg_status !== "none") return c.json(badRequest("宿泊者の登録が始まっているため削除できません"), 400);
+  // 1 人でもチェックインしたら「宿泊した」ことになり、名簿と写真は 3 年間の保存が必要（要件定義書 D-01）
+  if (row.stay_status !== "not_arrived" || row.first_checkin_at) {
+    return c.json(badRequest("チェックインした宿泊者がいるため削除できません（名簿と写真は 3 年間の保存が必要です）"), 400);
+  }
+
+  // 宿泊していない人の名簿と写真は、保存の義務がないためすぐに削除する（要件定義書 D-03）
+  if (row.drive_folder_id) {
+    await deleteFile(c.env, db, row.drive_folder_id).catch((e) =>
+      console.error(JSON.stringify({ event: "folder_delete_failed", message: String(e) })),
+    );
+  }
+  const removeGuests = [
+    db.prepare("DELETE FROM guests WHERE reservation_id = ?").bind(id),
+    db.prepare("DELETE FROM photos WHERE reservation_id = ?").bind(id),
+  ];
+
+  if (row.source === "manual") {
+    await db.batch([
+      ...removeGuests,
+      db.prepare("DELETE FROM reservations WHERE id = ? AND stay_status = 'not_arrived'").bind(id),
+      auditStatement(db, `admin:${c.var.admin.email}`, "delete_reservation", id),
+    ]);
+    return c.json({ ok: true, deleted: true });
+  }
+
+  // 取り込んだ予約は、行を消すと次の取り込みで再び登録されるため、キャンセル（以後の取り込みで上書きしない）にして残す
   await db.batch([
-    db.prepare("DELETE FROM reservations WHERE id = ? AND reg_status = 'none'").bind(id),
-    auditStatement(db, `admin:${c.var.admin.email}`, "delete_reservation", id),
+    ...removeGuests,
+    db
+      .prepare(
+        `UPDATE reservations SET status = 'cancelled', status_locked = 1, guest_token = NULL, reg_status = 'none',
+           reject_reason = NULL, keybox_code = NULL, consent_at = NULL, consent_for_companions = 0, invite_sent_at = NULL,
+           submitted_at = NULL, approved_at = NULL, code_sent_at = NULL, display_name = NULL, guest_total = 0,
+           guest_ready = 0, guest_pending = 0, guest_checked_in = 0, drive_folder_id = NULL, lang = NULL, updated_at = ?
+         WHERE id = ? AND stay_status = 'not_arrived'`,
+      )
+      .bind(nowIso(), id),
+    auditStatement(db, `admin:${c.var.admin.email}`, "cancel_reservation", id),
   ]);
-  return c.json({ ok: true });
+  return c.json({ ok: true, deleted: false });
 });
 
 /** 宿泊者入力画面の URL の作り直し（古い URL は無効になる。要件定義書 G-03） */

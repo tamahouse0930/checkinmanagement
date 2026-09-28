@@ -115,6 +115,11 @@ describe("planSync", () => {
     expect(plan.updates).toHaveLength(0);
   });
 
+  it("管理者がキャンセルにした予約は、iCal に残っていても次の取り込みでキャンセルのまま", () => {
+    const plan = planSync("booking", events, [row({ status: "cancelled", status_locked: 1 })], today);
+    expect(plan).toEqual({ inserts: [], updates: [], cancels: [] });
+  });
+
   it("キャンセルになった予約が iCal に戻ってきたら、予約に戻す", () => {
     const plan = planSync("booking", events, [row({ status: "cancelled" })], today);
     expect(plan.updates).toEqual([expect.objectContaining({ id: "r1", status: "confirmed" })]);

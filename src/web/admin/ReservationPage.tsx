@@ -321,14 +321,25 @@ export function ReservationPage({ id }: { id: string }) {
     act(() => api(`/api/admin/reservations/${id}`, { method: "PATCH", body: { status: next } }), "変更しました");
   };
 
+  // 削除できるのは、テスト予約か、誰もチェックインしていない予約（チェックイン後は 3 年間の保存が必要）
+  const canRemove = r.isTest || (r.stayStatus === "not_arrived" && !r.firstCheckinAt && r.status !== "cancelled");
+  const hasGuestData = r.guests.length > 0;
+
   const remove = async () => {
     const text = r.isTest
       ? "このテスト予約を削除しますか？ 名簿と写真（Google ドライブのフォルダ）もすべて削除します。"
-      : "この宿泊を削除しますか？";
+      : r.source === "manual"
+        ? `この宿泊を削除しますか？${hasGuestData ? "\n登録された名簿と写真もすべて削除します。" : ""}`
+        : `この予約をキャンセルにしますか？${hasGuestData ? "\n登録された名簿と写真もすべて削除します。" : ""}\n宿泊者入力画面の URL も使えなくなります。予約サイト側のキャンセルは、予約サイトで操作してください。`;
     if (!confirm(text)) return;
     try {
-      await api(`/api/admin/reservations/${id}`, { method: "DELETE" });
-      backToMonth();
+      const res = await api<{ deleted?: boolean }>(`/api/admin/reservations/${id}`, { method: "DELETE" });
+      if (res.deleted === false) {
+        setMessage("キャンセルにしました。名簿と写真を削除しました");
+        await load();
+      } else {
+        backToMonth();
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -409,18 +420,30 @@ export function ReservationPage({ id }: { id: string }) {
               <button className="button" onClick={() => navigate(`/admin/reservations/${id}/edit`)}>
                 編集
               </button>
-              {(r.isTest || r.regStatus === "none") && (
+              {canRemove && (
                 <button className="button danger" onClick={remove}>
                   削除
                 </button>
               )}
             </>
           ) : (
-            <button className="button" onClick={toggleBlocked}>
-              {r.status === "blocked" ? "予約に戻す" : "ブロックに変更"}
-            </button>
+            <>
+              {r.status !== "cancelled" && (
+                <button className="button" onClick={toggleBlocked}>
+                  {r.status === "blocked" ? "予約に戻す" : "ブロックに変更"}
+                </button>
+              )}
+              {canRemove && r.status === "confirmed" && (
+                <button className="button danger" onClick={remove}>
+                  キャンセルにする{hasGuestData ? "（名簿も削除）" : ""}
+                </button>
+              )}
+            </>
           )}
         </div>
+        {!canRemove && !r.isTest && r.firstCheckinAt && (
+          <p className="note">チェックインした宿泊者がいるため削除できません（名簿と写真は 3 年間の保存が必要です）。</p>
+        )}
         {r.source === "ical" && r.channel === "booking" && r.status !== "blocked" && (
           <p className="note">
             Booking.com の iCal は、予約と販売停止日の区別がつきません。予約でない場合は「ブロックに変更」を押してください。
