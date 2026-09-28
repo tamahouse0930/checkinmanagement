@@ -35,19 +35,35 @@ npm run dev                      # http://localhost:5173/admin
    - `https://<本番のドメイン>/auth/google/callback`（本番）
 5. クライアント ID とクライアント シークレットを `.dev.vars`（本番は `wrangler secret put`）に登録する
 
-## 本番へのデプロイ（最初に 1 回）
+## 本番へのデプロイ
 
-```sh
-npx wrangler login
-npx wrangler d1 create tamahouse-checkin   # 表示された database_id を wrangler.jsonc に書く
-npm run db:migrate:remote
-npx wrangler secret put GOOGLE_CLIENT_ID
-npx wrangler secret put GOOGLE_CLIENT_SECRET
-npx wrangler secret put SESSION_SECRET
-npx wrangler secret put TOKEN_ENC_KEY
-npm run admin:add -- --remote <管理者の Google アカウント>   # 3 名分
-npm run deploy
-```
+GitHub の main に push すると、Cloudflare が自動でビルドしてデプロイする（Workers Builds）。
 
-デプロイ後、代表の管理者が管理画面の「設定」→「Google と連携」を押し、`tamahouse0930@gmail.com` で許可する。
-「テストメールを送る」で通知メールが届けば連携は完了。
+### 最初に 1 回だけ行う設定（Cloudflare のダッシュボード）
+
+1. **D1 のデータベースを作る**: 「ストレージとデータベース」→「D1」→「作成」。名前は `tamahouse-checkin`。表示された「データベース ID」を `wrangler.jsonc` の `database_id` に書いて push する
+2. **ビルドの設定**: Worker の「設定」→「ビルド」で次のようにする
+
+   | 項目 | 値 |
+   |---|---|
+   | ビルド コマンド | `npm run build` |
+   | デプロイ コマンド | `npx wrangler d1 migrations apply tamahouse-checkin --remote && npx wrangler deploy` |
+
+   デプロイのたびに、未適用のマイグレーション（テーブルの変更）が自動で適用される
+3. **秘密情報**: Worker の「設定」→「変数とシークレット」に、種類「シークレット」で次の 4 つを登録する
+
+   | 名前 | 値 |
+   |---|---|
+   | `GOOGLE_CLIENT_ID` | Google Cloud の OAuth クライアント ID |
+   | `GOOGLE_CLIENT_SECRET` | 同じくクライアント シークレット |
+   | `SESSION_SECRET` | `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` で作った値 |
+   | `TOKEN_ENC_KEY` | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` で作った値 |
+
+4. **Google 側**: ホームページ（`/`）とプライバシーポリシー（`/privacy`）の URL を「ブランディング」に登録する。デプロイ後の URL（`https://checkinmanagement.<サブドメイン>.workers.dev`）について、OAuth クライアントの「承認済みのリダイレクト URI」に `…/auth/google/callback` を、「ブランディング」の「承認済みドメイン」にドメインを追加する
+
+### デプロイ後
+
+1. `tamahouse0930@gmail.com` で管理画面（`/admin`）にログインする（マイグレーションで最初から登録済み）
+2. 「設定」→「ログインできるアカウント」に管理者 3 名の Google アカウントを追加する
+3. 代表の管理者が「設定」→「Google と連携」を押し、`tamahouse0930@gmail.com` で許可する
+4. 「通知メールの宛先」を登録し、「テストメールを送る」で届けば完了

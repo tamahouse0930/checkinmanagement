@@ -1,8 +1,12 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "tamahouse-checkin",
+  // Cloudflare のダッシュボードの Worker 名と一致させる（自動デプロイの条件）
+  "name": "checkinmanagement",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-09-01",
+  // https://checkinmanagement.<サブドメイン>.workers.dev で公開する
+  "workers_dev": true,
+  "preview_urls": false,
   "assets": {
     // 画面（React）は Static Assets から配信する。API と Google ログインだけ Worker を通す
     "not_found_handling": "single-page-application",
