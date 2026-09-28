@@ -145,6 +145,30 @@ export async function listAppFileIds(env: Env, db: Db): Promise<Set<string>> {
   return ids;
 }
 
+/**
+ * 画像の文字を Google ドライブの文字認識（OCR）で読み取る（要件定義書 G-16）。画像を Google ドキュメントに
+ * 変換してコピーし（このとき文字認識される）、中の文字を取り出してからコピーを削除する。
+ * 読み取りはすべて Google 側で行うので、ゲストのスマホにも Worker の CPU 時間にも負担をかけない。
+ * 画像が見つからなければ null
+ */
+export async function ocrImage(env: Env, db: Db, fileId: string): Promise<string | null> {
+  const token = await getGoogleAccessToken(env, db);
+  const copy = await driveFetch(token, `${DRIVE_FILES}/${fileId}/copy?ocrLanguage=en&fields=id`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: `_ocr_${fileId}`, mimeType: "application/vnd.google-apps.document" }),
+  });
+  if (copy.status === 404) return null;
+  const docId = ((await copy.json()) as { id: string }).id;
+  try {
+    const res = await driveFetch(token, `${DRIVE_FILES}/${docId}/export?mimeType=text/plain`);
+    return res.status === 404 ? null : await res.text();
+  } finally {
+    // 削除に失敗しても、コピーは宿泊ごとのフォルダの中にあるため、保存期間が過ぎればフォルダごと消える
+    await driveFetch(token, `${DRIVE_FILES}/${docId}`, { method: "DELETE" }).catch(() => undefined);
+  }
+}
+
 /** ファイルの中身を取得する。見つからなければ null */
 export async function downloadFile(env: Env, db: Db, fileId: string): Promise<Response | null> {
   const token = await getGoogleAccessToken(env, db);

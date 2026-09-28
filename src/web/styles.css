@@ -556,6 +556,17 @@ label.check.inline {
   gap: 8px;
 }
 
+/* パスポート番号が写真と違う人（見逃さないよう、カードの枠と見出しで目立たせる） */
+.guest-card.passport-mismatch {
+  border: 2px solid var(--danger);
+}
+.chip.danger {
+  background: var(--alert-bg);
+  border-color: var(--danger);
+  color: var(--danger);
+  font-weight: 600;
+}
+
 .guest-card-body {
   display: grid;
   grid-template-columns: 1fr 180px;

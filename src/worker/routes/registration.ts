@@ -5,11 +5,12 @@ import { formatDateJa, jstNow } from "../../shared/dates";
 import type { RegistrationView } from "../../shared/api-types";
 import { type GuestFields, normalizeGuest } from "../../shared/guest";
 import { isLang, LANGS, type Lang } from "../../shared/langs";
+import { parseMrz } from "../../shared/mrz";
 import type { AppEnv } from "../env";
 import { randomToken } from "../lib/crypto";
 import { getSettings, getText } from "../lib/settings";
 import { nowIso } from "../lib/time";
-import { downloadFile } from "../services/google/drive";
+import { downloadFile, ocrImage } from "../services/google/drive";
 import { GoogleNotLinkedError } from "../services/google/token";
 import {
   countersStatement,
@@ -227,6 +228,28 @@ async function servePhoto(c: Context<AppEnv>, photoId: string, allowedGuestSeq: 
   });
 }
 
+/**
+ * 保存済みのパスポートの写真から MRZ を読み取る（要件定義書 G-16）。文字認識は Google ドライブで行うため、
+ * ゲストのスマホでは読み取り用のデータのダウンロードも計算もしない。読み取れなければ result は null
+ */
+async function readPassportPhoto(c: Context<AppEnv>, photoId: string, allowedGuestSeq: number | null) {
+  const r = c.var.reservation;
+  const db = c.var.db;
+  const photo = await db.first<{ drive_file_id: string; seq: number }>(
+    db
+      .prepare("SELECT p.drive_file_id, g.seq FROM photos p JOIN guests g ON g.id = p.guest_id WHERE p.id = ? AND p.reservation_id = ?")
+      .bind(photoId, r.id),
+  );
+  if (!photo || (allowedGuestSeq !== null && photo.seq !== allowedGuestSeq)) return error(c, 404, "not_found", "not_found");
+  try {
+    const text = await ocrImage(c.env, db, photo.drive_file_id);
+    return c.json({ result: text ? parseMrz(text) : null });
+  } catch (e) {
+    console.error(JSON.stringify({ event: "passport_ocr_failed", message: String(e) }));
+    return error(c, 502, "ocr_failed", "ocr_failed");
+  }
+}
+
 // ---- 代表者 ----
 
 export const representativeRoutes = new Hono<AppEnv>();
@@ -287,6 +310,7 @@ representativeRoutes.post("/photos", async (c) => {
 });
 
 representativeRoutes.get("/photos/:id", (c) => servePhoto(c, c.req.param("id"), null));
+representativeRoutes.post("/photos/:id/ocr", (c) => readPassportPhoto(c, c.req.param("id"), null));
 
 /** 承認後の同行者の追加（要件定義書 G-21） */
 representativeRoutes.post("/additions", async (c) => {
@@ -338,6 +362,8 @@ representativeRoutes.post("/submit", async (c) => {
     console.error(JSON.stringify({ event: "photo_rename_failed", message: String(e) })),
   );
   const origin = new URL(c.req.url).origin;
+  // パスポート番号が写真と違う人（見逃さないよう、通知にも書く。ゲストの画面には出さない）
+  const mismatch = pending.filter((g) => g.passport_check === "mismatch").map((g) => g.full_name ?? `${g.seq}人目`);
   c.executionCtx.waitUntil(
     notifyHost(c.env, db, {
       isTest: r.is_test === 1,
@@ -346,6 +372,7 @@ representativeRoutes.post("/submit", async (c) => {
         `宿泊日: ${formatDateJa(r.check_in_date)} 〜 ${formatDateJa(r.check_out_date)}`,
         `代表者: ${guests.find((g) => g.seq === 1)?.full_name ?? "（未入力）"}`,
         `人数: ${r.guest_total}人${isAddition ? `（追加 ${pending.length}人）` : ""}`,
+        ...(mismatch.length > 0 ? ["", `※ パスポート番号が写真から読み取った番号と違う人がいます: ${mismatch.join("、")}`] : []),
         "",
         `確認: ${origin}/admin/reservations/${r.id}`,
       ].join("\n"),
@@ -363,3 +390,4 @@ companionRoutes.get("/", async (c) => c.json(await buildView(c, await loadGuests
 companionRoutes.put("/", async (c) => saveGuest(c, c.var.companionSeq!, await c.req.json(), true));
 companionRoutes.post("/photos", (c) => uploadPhoto(c, c.var.companionSeq!));
 companionRoutes.get("/photos/:id", (c) => servePhoto(c, c.req.param("id"), c.var.companionSeq));
+companionRoutes.post("/photos/:id/ocr", (c) => readPassportPhoto(c, c.req.param("id"), c.var.companionSeq));

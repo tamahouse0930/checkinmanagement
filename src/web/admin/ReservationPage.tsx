@@ -143,13 +143,18 @@ function GuestCard({
     );
   }
 
+  const passportMismatch = g.passportCheck === "mismatch";
+
   return (
-    <div className="guest-card">
+    <div className={`guest-card${passportMismatch ? " passport-mismatch" : ""}`}>
       <div className="guest-card-head">
         <strong>
           {g.seq}. {g.fullName || "（未入力）"}
         </strong>
-        <span className={`chip g-${g.status}`}>{GUEST_STATUS[g.status]}</span>
+        <span>
+          {passportMismatch && <span className="chip danger">パスポート番号 不一致</span>}
+          <span className={`chip g-${g.status}`}>{GUEST_STATUS[g.status]}</span>
+        </span>
       </div>
       <div className="guest-card-body">
         <dl className="status">
@@ -161,8 +166,11 @@ function GuestCard({
               <dd>
                 {g.passportNumber || "—"}
                 {g.passportCheck === "match" && <small className="note">（写真の番号と一致）</small>}
-                {g.passportCheck === "mismatch" && (
-                  <small className="alert">（写真から読み取った番号 {g.passportMrzNumber} と違います。写真で確認してください）</small>
+                {passportMismatch && (
+                  <small className="warn-text">
+                    {" "}
+                    （写真から読み取った番号は <strong>{g.passportMrzNumber}</strong>。写真で確認してください）
+                  </small>
                 )}
                 {g.passportCheck === "unreadable" && <small className="note">（写真から番号を読み取れませんでした。写真で確認してください）</small>}
               </dd>
@@ -422,6 +430,7 @@ export function ReservationPage({ id }: { id: string }) {
   const backToMonth = () => navigate(`/admin?month=${r.checkInDate.slice(0, 7)}`);
   const guestLang: Lang = r.lang ?? "en";
   const canJudge = r.regStatus === "submitted" || (r.regStatus === "approved" && r.guestPending > 0);
+  const mismatchNames = r.guests.filter((g) => g.passportCheck === "mismatch").map((g) => `${g.seq}. ${g.fullName || "（未入力）"}`);
 
   const regenerate = () => {
     if (!confirm("URL を作り直しますか？ 今の URL は使えなくなります。")) return;
@@ -447,8 +456,11 @@ export function ReservationPage({ id }: { id: string }) {
   };
 
   const approve = () => {
-    const pendingNames = r.guests.filter((g) => g.status === "submitted").map((g) => g.fullName).join("、");
-    if (!confirm(`次の方の登録を承認しますか？\n${pendingNames}`)) return;
+    const pending = r.guests.filter((g) => g.status === "submitted");
+    const pendingNames = pending.map((g) => g.fullName).join("、");
+    const pendingMismatch = pending.filter((g) => g.passportCheck === "mismatch").map((g) => g.fullName);
+    const warning = pendingMismatch.length > 0 ? `\n\n※ パスポート番号が写真と違う人がいます: ${pendingMismatch.join("、")}` : "";
+    if (!confirm(`次の方の登録を承認しますか？\n${pendingNames}${warning}`)) return;
     act(() => api(`/api/admin/reservations/${id}/approve`, { method: "POST" }), "承認しました。暗証番号を設定して、案内文を送ってください");
   };
 
@@ -568,6 +580,12 @@ export function ReservationPage({ id }: { id: string }) {
       {r.guests.length > 0 && (
         <section className="card">
           <h2>② 登録内容の確認</h2>
+          {mismatchNames.length > 0 && (
+            <p className="alert">
+              パスポート番号が、写真から読み取った番号と違う人がいます: {mismatchNames.join("、")}
+              。承認の前に、パスポートの写真で番号を確認してください。
+            </p>
+          )}
           {r.consentForCompanions && <p className="note">代表者が「同行者全員から同意を得ています」にチェックしています。</p>}
           <div className="guest-cards">
             {r.guests.map((g) => (

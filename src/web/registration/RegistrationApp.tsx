@@ -5,8 +5,7 @@ import { EMPTY_GUEST, type GuestFields, type GuestView, type MissingField, missi
 import { detectLang, isLang, LANG_NAME, LANGS, type Lang } from "../../shared/langs";
 import { fill, GUEST_TEXT, type GuestText } from "../i18n/guest";
 import { CountrySelect } from "./CountrySelect";
-import { alpha3ToAlpha2, samePassportNumber } from "../../shared/mrz";
-import { readPassport } from "./passportOcr";
+import { alpha3ToAlpha2, type MrzResult } from "../../shared/mrz";
 import { resizeImage } from "./photo";
 
 /** 宿泊者入力画面（代表者 /r/:token、同行者 /g/:token。設計書 4.3） */
@@ -95,8 +94,7 @@ function PhotoField(props: {
   uploadPath: string;
   photoId: string | null;
   disabled: boolean;
-  /** 保存した写真の ID と、縮小した写真（パスポートの読み取りに使う） */
-  onUploaded: (photoId: string, image: Blob) => void;
+  onUploaded: (photoId: string) => void;
 }) {
   const { t, api } = props;
   const [preview, setPreview] = useState<string | null>(null);
@@ -128,7 +126,7 @@ function PhotoField(props: {
       form.append("file", resized, "photo.jpg");
       const res = await api<{ photoId: string }>(props.uploadPath, { method: "POST", form });
       setState("saved");
-      props.onUploaded(res.photoId, resized);
+      props.onUploaded(res.photoId);
     } catch {
       setState("failed");
     } finally {
@@ -197,18 +195,19 @@ function GuestEditor(props: {
     props.guest?.passportCheck ? props.guest.passportMrzNumber : undefined,
   );
   const [ocr, setOcr] = useState<{ state: "idle" | "reading" | "done" | "failed" }>({ state: "idle" });
-  const passportMismatch =
-    g.isJapanese === false && !!mrzNumber && !!g.passportNumber && !samePassportNumber(g.passportNumber, mrzNumber);
 
   /**
-   * パスポートの写真から MRZ を読み取り、空欄の国籍・氏名に入れる（要件定義書 G-16）。
-   * 旅券番号は、L と 1 のように写真からは確実に見分けられない文字があるため自動では入れず、
-   * ゲストが入力した番号と照合するだけにする（違っていれば、旅券番号の欄に注意を出す）
+   * パスポートの写真から MRZ を読み取り、空欄の旅券番号・国籍・氏名に初期値として入れる（要件定義書 G-16）。
+   * すでに入力されている欄は変えない。旅券番号は L と 1 のようにチェック用の数字でも見分けられない文字があるため、
+   * 画面で確認を促す。入力された番号との照合の結果はサーバーで保存し、管理画面にだけ表示する（ゲストには出さない）。
+   * 文字認識はサーバー経由で Google ドライブが行うので、スマホでは読み取り用のデータのダウンロードも計算もしない
    */
-  const readFromPassport = async (image: Blob) => {
+  const readFromPassport = async (photoId: string) => {
     setOcr({ state: "reading" });
     try {
-      const result = await readPassport(image);
+      const { result } = await api<{ result: MrzResult | null }>(`/photos/${encodeURIComponent(photoId)}/ocr`, {
+        method: "POST",
+      });
       if (!result) {
         setMrzNumber(null);
         setOcr({ state: "failed" });
@@ -217,6 +216,7 @@ function GuestEditor(props: {
       setMrzNumber(result.numberValid ? result.passportNumber : null);
       setG((prev) => {
         const next = { ...prev };
+        if (!next.passportNumber.trim() && result.numberValid) next.passportNumber = result.passportNumber;
         const nationality = alpha3ToAlpha2(result.nationality3);
         if (!next.nationality && nationality) next.nationality = nationality;
         const name = [result.surname, result.givenNames].filter(Boolean).join(" ");
@@ -314,9 +314,9 @@ function GuestEditor(props: {
                 uploadPath={isCompanion ? "/photos" : `/photos?seq=${seq}`}
                 photoId={g.idPhotoId}
                 disabled={disabled}
-                onUploaded={(id, image) => {
+                onUploaded={(id) => {
                   set("idPhotoId", id);
-                  if (g.isJapanese === false) void readFromPassport(image);
+                  if (g.isJapanese === false) void readFromPassport(id);
                 }}
               />
               {bad("idPhoto") && <p className="alert">{t.idPhotoRequired}</p>}
@@ -348,7 +348,6 @@ function GuestEditor(props: {
                     inputMode="text"
                   />
                   {g.passportNumber && missing.includes("passportNumber") && <small className="alert">{t.passportFormat}</small>}
-                  {passportMismatch && <small className="alert">{fill(t.passportMismatch, { mrz: mrzNumber ?? "" })}</small>}
                 </label>
               </>
             )}
