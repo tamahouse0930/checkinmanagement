@@ -33,6 +33,13 @@ export interface ReservationRow {
   guest_pending: number;
   guest_checked_in: number;
   drive_folder_id: string | null;
+  first_checkin_at: string | null;
+  photos_verified_at: string | null;
+  photo_mismatch: string | null;
+  checked_out_at: string | null;
+  checked_out_by: string | null;
+  notified_unregistered_at: string | null;
+  notified_overdue_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +90,8 @@ export function toView(row: GuestRow, origin: string): GuestView {
     enteredBy: row.entered_by,
     entryUrl: row.entry_token ? `${origin}/g/${row.entry_token}` : null,
     consented: row.consent_at !== null,
+    kioskPhotoId: row.kiosk_photo_id,
+    checkedInAt: row.checked_in_at,
   };
 }
 
@@ -146,6 +155,7 @@ export function countersStatement(db: Db, reservationId: string, now: string): D
       `UPDATE reservations SET
          guest_ready = (SELECT COUNT(*) FROM guests WHERE reservation_id = ?1 AND status <> 'draft'),
          guest_pending = (SELECT COUNT(*) FROM guests WHERE reservation_id = ?1 AND status = 'submitted'),
+         guest_checked_in = (SELECT COUNT(*) FROM guests WHERE reservation_id = ?1 AND checked_in_at IS NOT NULL),
          display_name = (SELECT full_name FROM guests WHERE reservation_id = ?1 AND seq = 1),
          updated_at = ?2
        WHERE id = ?1`,

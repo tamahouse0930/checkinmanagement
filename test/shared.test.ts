@@ -1,6 +1,39 @@
 import { describe, expect, it } from "vitest";
 import { addDays, addMonths, diffDays, formatDateJa, isValidDate, jstNow, monthRange } from "../src/shared/dates";
-import { progressOf, type ProgressInput } from "../src/shared/progress";
+import { attentionOf, type AttentionInput, progressOf, type ProgressInput } from "../src/shared/progress";
+
+describe("要対応（要件定義書 H-02）", () => {
+  const base: AttentionInput = {
+    status: "confirmed",
+    reg_status: "approved",
+    stay_status: "in_house",
+    invite_sent_at: "x",
+    code_sent_at: "x",
+    guest_pending: 0,
+    check_out_date: "2026-10-05",
+    guest_checked_in: 2,
+    photos_verified_at: null,
+  };
+
+  it("チェックインした人がいて照合していなければ照合待ち", () => {
+    expect(attentionOf(base, "2026-10-04", "12:00", "10:00")).toEqual(["verify"]);
+    expect(attentionOf({ ...base, photos_verified_at: "x" }, "2026-10-04", "12:00", "10:00")).toEqual([]);
+  });
+
+  it("チェックアウト日のチェックアウト時刻を過ぎても滞在中ならチェックアウト未操作", () => {
+    const verified = { ...base, photos_verified_at: "x" };
+    expect(attentionOf(verified, "2026-10-05", "09:59", "10:00")).toEqual([]);
+    expect(attentionOf(verified, "2026-10-05", "10:00", "10:00")).toEqual(["overdue"]);
+    expect(attentionOf(verified, "2026-10-06", "08:00", "10:00")).toEqual(["overdue"]);
+    expect(attentionOf({ ...verified, stay_status: "checked_out" }, "2026-10-06", "08:00", "10:00")).toEqual([]);
+  });
+
+  it("過去の予約は進捗の要対応に数えない", () => {
+    const old = { ...base, reg_status: "none" as const, stay_status: "not_arrived" as const, invite_sent_at: null, guest_checked_in: 0 };
+    expect(attentionOf(old, "2026-10-06", "08:00", "10:00")).toEqual([]);
+    expect(attentionOf(old, "2026-10-04", "08:00", "10:00")).toEqual(["url_unsent"]);
+  });
+});
 
 describe("日付（JST）", () => {
   it("UTC の 15 時は JST の翌日 0 時になる", () => {

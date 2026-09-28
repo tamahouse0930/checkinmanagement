@@ -76,6 +76,38 @@ export async function saveIdPhoto(
   return photoId;
 }
 
+/**
+ * タブレットで撮った当日の写真を保存する（要件定義書 T-02）。撮り直しはタブレットの確認画面でだけできるので、
+ * ここでは上書きしない（すでに撮影済みなら呼び出し側で拒否する）
+ */
+export async function saveKioskPhoto(
+  env: Env,
+  db: Db,
+  reservation: FolderTargetRow,
+  guest: { id: string; seq: number; full_name: string | null },
+  bytes: Uint8Array,
+  mime: string,
+): Promise<{ photoId: string; statements: D1PreparedStatement[] }> {
+  const folderId = await ensureReservationFolder(env, db, reservation);
+  const fileName = photoFileName(guest.seq, guest.full_name, "kiosk", mime);
+  const file = await uploadFile(env, db, folderId, fileName, bytes, mime);
+  const photoId = crypto.randomUUID();
+  const now = nowIso();
+  return {
+    photoId,
+    statements: [
+      db
+        .prepare(
+          `INSERT INTO photos (id, reservation_id, guest_id, kind, drive_file_id, drive_folder_id, file_name, size_bytes,
+             taken_at, delete_after, created_at) VALUES (?, ?, ?, 'kiosk', ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(photoId, reservation.id, guest.id, file.id, folderId, fileName, file.size, now, deleteAfterFor(reservation.check_out_date), now),
+    ],
+  };
+}
+
+type FolderTargetRow = Parameters<typeof ensureReservationFolder>[2] & { check_out_date: string };
+
 /** 送信時に、写真のファイル名を入力された氏名に合わせる（撮影時は氏名が未入力のことがあるため） */
 export async function renamePhotosForGuests(env: Env, db: Db, guests: GuestRow[]): Promise<void> {
   const ids = guests.map((g) => g.id_photo_id).filter((id): id is string => Boolean(id));

@@ -89,8 +89,13 @@ async function buildView(c: Context<AppEnv>, guests: GuestRow[]): Promise<Regist
     regStatus: r.reg_status,
     rejectReason: r.reject_reason,
     guestTotal: r.guest_total,
-    // 同行者の画面に、他の同行者用の URL は出さない
-    guests: visible.map((g) => ({ ...toView(g, origin), entryUrl: companionSeq === null ? toView(g, origin).entryUrl : null })),
+    // 同行者の画面に、他の同行者用の URL は出さない。当日の写真はゲストの画面には出さない
+    guests: visible.map((g) => ({
+      ...toView(g, origin),
+      entryUrl: companionSeq === null ? toView(g, origin).entryUrl : null,
+      kioskPhotoId: null,
+      checkedInAt: null,
+    })),
     companionSeq,
     houseRules: Object.fromEntries(LANGS.map((l) => [l, getText(settings, "house_rules", l)])) as Record<Lang, string>,
     isTest: r.is_test === 1,

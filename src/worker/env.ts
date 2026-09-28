@@ -6,6 +6,8 @@ export interface Env {
   DB: D1Database;
   /** 写真の保存とメールの送信に使う Google アカウント（wrangler.jsonc の vars） */
   GOOGLE_SERVICE_EMAIL: string;
+  /** 定期処理の通知メールに載せる管理画面の URL の起点（wrangler.jsonc の vars） */
+  PUBLIC_ORIGIN?: string;
   /** 以下はシークレット（.dev.vars / wrangler secret put） */
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;

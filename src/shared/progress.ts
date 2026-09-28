@@ -54,7 +54,9 @@ export const PROGRESS_LABEL: Record<ProgressKey, string> = {
 };
 
 /** 要対応として数える進捗（要件定義書 H-02） */
-export const ATTENTION_KEYS = ["url_unsent", "pending", "rejected", "approved"] as const;
+export const PROGRESS_ATTENTION_KEYS = ["url_unsent", "pending", "rejected", "approved"] as const;
+/** 要対応の全項目。verify = 写真の照合待ち、overdue = チェックアウト時刻を過ぎても未操作 */
+export const ATTENTION_KEYS = [...PROGRESS_ATTENTION_KEYS, "verify", "overdue"] as const;
 export type AttentionKey = (typeof ATTENTION_KEYS)[number];
 
 export const ATTENTION_LABEL: Record<AttentionKey, string> = {
@@ -62,7 +64,29 @@ export const ATTENTION_LABEL: Record<AttentionKey, string> = {
   pending: "承認待ち",
   rejected: "差し戻し中",
   approved: "暗証番号未送信",
+  verify: "照合待ち",
+  overdue: "チェックアウト未操作",
 };
+
+export interface AttentionInput extends ProgressInput {
+  check_out_date: string;
+  guest_checked_in: number;
+  photos_verified_at: string | null;
+}
+
+/** 1 件の予約が該当する要対応の項目 */
+export function attentionOf(r: AttentionInput, today: string, nowTime: string, checkoutTime: string): AttentionKey[] {
+  const keys: AttentionKey[] = [];
+  const progress = progressOf(r);
+  if (r.check_out_date >= today && (PROGRESS_ATTENTION_KEYS as readonly string[]).includes(progress)) {
+    keys.push(progress as AttentionKey);
+  }
+  if (r.status === "confirmed" && r.guest_checked_in > 0 && !r.photos_verified_at) keys.push("verify");
+  if (r.stay_status === "in_house" && (r.check_out_date < today || (r.check_out_date === today && nowTime >= checkoutTime))) {
+    keys.push("overdue");
+  }
+  return keys;
+}
 
 export const CHANNEL_LABEL: Record<Channel, string> = {
   airbnb: "Airbnb",

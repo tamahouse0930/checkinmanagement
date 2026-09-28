@@ -45,6 +45,11 @@ export interface ReservationDetail extends ReservationSummary {
   approvedAt: string | null;
   consentForCompanions: boolean;
   guestPending: number;
+  firstCheckinAt: string | null;
+  photosVerifiedAt: string | null;
+  photoMismatch: string | null;
+  checkedOutAt: string | null;
+  checkedOutBy: string | null;
   guests: GuestView[];
   /** 言語ごとの案内文（コピー用。暗証番号・差し戻しは条件がそろったときだけ） */
   messages: {

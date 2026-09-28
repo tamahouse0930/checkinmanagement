@@ -8,6 +8,7 @@ import { getSettings, invalidateSettings, parseRevoked, PROPERTY_ID, type Revoke
 import { nowIso } from "../lib/time";
 import { requireAdmin } from "../middleware/admin";
 import { sendMail } from "../services/google/gmail";
+import { forgetDevice } from "./kiosk";
 import { reservationRoutes } from "./reservations";
 import { LANGS } from "../../shared/langs";
 import { DEFAULT_TEXTS, TEXT_KINDS, type TextKind } from "../../shared/templates";
@@ -196,6 +197,44 @@ adminRoutes.put("/settings", async (c) => {
     auditStatement(db, `admin:${c.var.admin.email}`, "update_settings"),
   ]);
   invalidateSettings();
+  return c.json({ ok: true });
+});
+
+// ---- 玄関タブレット（要件定義書 T-10、設計書 4.6） ----
+
+adminRoutes.get("/devices", async (c) => {
+  const db = c.var.db;
+  const rows = await db.all(
+    db.prepare("SELECT id, name, last_seen_at, created_at FROM devices WHERE revoked_at IS NULL ORDER BY created_at LIMIT 20"),
+  );
+  return c.json({ devices: rows });
+});
+
+/** 登録用のコード（8 桁、10 分で失効）。タブレットの画面で入力してもらう */
+adminRoutes.post("/devices/pairing", async (c) => {
+  const parsed = z.object({ name: z.string().trim().min(1).max(50) }).safeParse(await c.req.json());
+  if (!parsed.success) return c.json(badRequest("タブレットの名前を入力してください"), 400);
+  const db = c.var.db;
+  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 100_000_000;
+  const code = String(n).padStart(8, "0");
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  await db.batch([
+    db.prepare("DELETE FROM device_pairings WHERE expires_at < ?").bind(nowIso()),
+    db
+      .prepare("INSERT INTO device_pairings (code, property_id, name, expires_at) VALUES (?, ?, ?, ?)")
+      .bind(code, PROPERTY_ID, parsed.data.name, expiresAt),
+    auditStatement(db, `admin:${c.var.admin.email}`, "create_device_pairing", parsed.data.name),
+  ]);
+  return c.json({ code, expiresAt });
+});
+
+adminRoutes.delete("/devices/:id", async (c) => {
+  const db = c.var.db;
+  await db.batch([
+    db.prepare("UPDATE devices SET revoked_at = ? WHERE id = ?").bind(nowIso(), c.req.param("id")),
+    auditStatement(db, `admin:${c.var.admin.email}`, "revoke_device", c.req.param("id")),
+  ]);
+  forgetDevice(c.req.param("id"));
   return c.json({ ok: true });
 });
 

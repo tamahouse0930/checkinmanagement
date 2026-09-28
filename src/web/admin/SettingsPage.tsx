@@ -377,6 +377,78 @@ function TextsSection() {
   );
 }
 
+interface DeviceRow {
+  id: string;
+  name: string;
+  last_seen_at: string | null;
+  created_at: string;
+}
+
+/** 玄関タブレットの登録・取り消しとテスト（要件定義書 T-10、H-32） */
+function DevicesSection() {
+  const [rows, setRows] = useState<DeviceRow[]>([]);
+  const [name, setName] = useState("玄関タブレット");
+  const [pairing, setPairing] = useState<{ code: string; expiresAt: string } | null>(null);
+  const { message, run } = useMessage();
+  const load = () => api<{ devices: DeviceRow[] }>("/api/admin/devices").then((r) => setRows(r.devices));
+  useEffect(() => {
+    load();
+  }, []);
+
+  const createPairing = () =>
+    run(async () => {
+      setPairing(await api<{ code: string; expiresAt: string }>("/api/admin/devices/pairing", { method: "POST", body: { name } }));
+    }, "登録用のコードを発行しました");
+
+  const revoke = (d: DeviceRow) => {
+    if (!confirm(`${d.name} の登録を取り消しますか？ このタブレットではチェックイン画面が使えなくなります。`)) return;
+    run(async () => {
+      await api(`/api/admin/devices/${d.id}`, { method: "DELETE" });
+      await load();
+    }, "登録を取り消しました");
+  };
+
+  return (
+    <section className="card">
+      <h2>玄関タブレット</h2>
+      <ul className="list">
+        {rows.map((d) => (
+          <li key={d.id}>
+            <span>
+              {d.name}
+              <small>最終利用 {formatDate(d.last_seen_at)}</small>
+            </span>
+            <button className="link danger" onClick={() => revoke(d)}>
+              登録を取り消す
+            </button>
+          </li>
+        ))}
+        {rows.length === 0 && <li className="note">登録されたタブレットはありません</li>}
+      </ul>
+      <div className="form inline ical-add">
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={50} placeholder="タブレットの名前" />
+        <button className="button" onClick={createPairing} disabled={!name.trim()}>
+          タブレットを追加
+        </button>
+      </div>
+      {pairing && (
+        <div className="pairing">
+          <p>
+            タブレットで <strong>{location.origin}/kiosk</strong> を開き、次のコードを入力してください（{formatDate(pairing.expiresAt)} まで有効）。
+          </p>
+          <p className="pairing-code">{pairing.code}</p>
+        </div>
+      )}
+      <div className="actions">
+        <a className="button" href="/kiosk?mode=test" target="_blank" rel="noreferrer">
+          タブレット画面をテスト（テスト予約だけを表示）
+        </a>
+      </div>
+      <Message message={message} />
+    </section>
+  );
+}
+
 function SessionsSection() {
   const [rows, setRows] = useState<SessionRow[]>([]);
   const { message, run } = useMessage();
@@ -434,6 +506,7 @@ export function SettingsPage({ me }: { me: { email: string } }) {
       <p className="note">ログイン中: {me.email}</p>
       <GoogleSection google={settings.google} />
       <IcalSection />
+      <DevicesSection />
       <BasicSection initial={settings.property} onSaved={load} />
       <TextsSection />
       <EmailListSection

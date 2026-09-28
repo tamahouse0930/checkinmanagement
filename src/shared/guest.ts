@@ -22,6 +22,9 @@ export interface GuestView extends GuestFields {
   enteredBy: EnteredBy;
   entryUrl: string | null;
   consented: boolean;
+  /** 当日のタブレットの写真とチェックインの日時（管理画面だけで使う） */
+  kioskPhotoId: string | null;
+  checkedInAt: string | null;
 }
 
 export const EMPTY_GUEST: GuestFields = {

@@ -1,10 +1,12 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { CalendarResponse, ReservationDetail, ReservationSummary, SyncResponse } from "../../shared/api-types";
-import { diffDays, isValidDate, isValidMonth, jstNow, monthRange } from "../../shared/dates";
+import { addDays, diffDays, isValidDate, isValidMonth, jstNow, monthRange } from "../../shared/dates";
 import {
   ATTENTION_KEYS,
+  type AttentionInput,
   type AttentionKey,
+  attentionOf,
   type Channel,
   progressOf,
   type ProgressInput,
@@ -96,6 +98,11 @@ async function toDetail(c: Context<AppEnv>, r: DetailRow, guests: GuestRow[]): P
     approvedAt: r.approved_at,
     consentForCompanions: r.consent_for_companions === 1,
     guestPending: r.guest_pending,
+    firstCheckinAt: r.first_checkin_at,
+    photosVerifiedAt: r.photos_verified_at,
+    photoMismatch: r.photo_mismatch,
+    checkedOutAt: r.checked_out_at,
+    checkedOutBy: r.checked_out_by,
     guests: guests.map((g) => toView(g, origin)),
     messages: {
       invite: render("invite"),
@@ -145,26 +152,29 @@ reservationRoutes.get("/calendar", async (c) => {
          WHERE check_out_date >= ? AND check_in_date <= ? ORDER BY check_in_date LIMIT 300`,
       )
       .bind(start, end),
+    // 照合待ち・チェックアウト未操作に気付けるよう、1 週間前にチェックアウトした予約から数える
     db
       .prepare(
-        `SELECT status, reg_status, stay_status, invite_sent_at, code_sent_at, guest_pending FROM reservations
+        `SELECT status, reg_status, stay_status, invite_sent_at, code_sent_at, guest_pending, check_out_date,
+           guest_checked_in, photos_verified_at FROM reservations
          WHERE check_out_date >= ? AND is_test = 0 AND status = 'confirmed' LIMIT 500`,
       )
-      .bind(today),
+      .bind(addDays(today, -7)),
     db.prepare("SELECT channel, last_error FROM ical_sources LIMIT 10"),
   ]);
 
+  const { googleLink, property } = await getSettings(db);
+  const now = jstNow();
+  const nowTime = `${String(now.hour).padStart(2, "0")}:${String(now.minute).padStart(2, "0")}`;
   const attention = Object.fromEntries(ATTENTION_KEYS.map((k) => [k, 0])) as Record<AttentionKey, number>;
-  for (const row of upcomingRows.results as ProgressInput[]) {
-    const key = progressOf(row);
-    if ((ATTENTION_KEYS as readonly string[]).includes(key)) attention[key as AttentionKey] += 1;
+  for (const row of upcomingRows.results as AttentionInput[]) {
+    for (const key of attentionOf(row, today, nowTime, property.checkout_time)) attention[key] += 1;
   }
 
   const alerts: string[] = [];
   for (const s of sources.results as { channel: Channel; last_error: string | null }[]) {
     if (s.last_error) alerts.push(`${s.channel === "airbnb" ? "Airbnb" : "Booking.com"} の取り込み: ${s.last_error}`);
   }
-  const { googleLink } = await getSettings(db);
   if (!googleLink) alerts.push("Google ドライブ・Gmail と連携されていません（設定画面から連携してください）");
   else if (googleLink.last_error) alerts.push(googleLink.last_error);
 
@@ -323,6 +333,62 @@ for (const [path, column] of [
     return c.json({ ok: true });
   });
 }
+
+/** 写真の照合（全員を確認して 1 回押す。不一致があれば内容を記録する。要件定義書 H-20） */
+reservationRoutes.post("/reservations/:id/verify-photos", async (c) => {
+  const id = c.req.param("id");
+  const parsed = z
+    .object({ result: z.enum(["ok", "mismatch"]), note: z.string().trim().max(500).optional() })
+    .safeParse(await c.req.json());
+  if (!parsed.success || (parsed.data.result === "mismatch" && !parsed.data.note)) {
+    return c.json(badRequest("不一致の内容を入力してください"), 400);
+  }
+  const db = c.var.db;
+  const now = nowIso();
+  await db.batch([
+    db
+      .prepare("UPDATE reservations SET photos_verified_at = ?, photo_mismatch = ? WHERE id = ?")
+      .bind(now, parsed.data.result === "mismatch" ? parsed.data.note! : null, id),
+    auditStatement(db, `admin:${c.var.admin.email}`, parsed.data.result === "ok" ? "verify_photos" : "photo_mismatch", id),
+  ]);
+  return c.json({ ok: true });
+});
+
+reservationRoutes.delete("/reservations/:id/verify-photos", async (c) => {
+  const db = c.var.db;
+  await db.run(db.prepare("UPDATE reservations SET photos_verified_at = NULL, photo_mismatch = NULL WHERE id = ?").bind(c.req.param("id")));
+  return c.json({ ok: true });
+});
+
+/** 管理者によるチェックアウト（ゲストが押し忘れた場合など。要件定義書 H-21） */
+reservationRoutes.post("/reservations/:id/checkout", async (c) => {
+  const id = c.req.param("id");
+  const db = c.var.db;
+  const result = await db.batch([
+    db
+      .prepare(
+        "UPDATE reservations SET stay_status = 'checked_out', checked_out_at = ?, checked_out_by = 'admin' WHERE id = ? AND stay_status <> 'checked_out'",
+      )
+      .bind(nowIso(), id),
+    auditStatement(db, `admin:${c.var.admin.email}`, "admin_checkout", id),
+  ]);
+  if ((result[0].meta.changes ?? 0) === 0) return c.json(badRequest("すでにチェックアウト済みです"), 400);
+  return c.json({ ok: true });
+});
+
+reservationRoutes.delete("/reservations/:id/checkout", async (c) => {
+  const db = c.var.db;
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE reservations SET stay_status = CASE WHEN first_checkin_at IS NULL THEN 'not_arrived' ELSE 'in_house' END,
+           checked_out_at = NULL, checked_out_by = NULL WHERE id = ?`,
+      )
+      .bind(c.req.param("id")),
+    auditStatement(db, `admin:${c.var.admin.email}`, "undo_checkout", c.req.param("id")),
+  ]);
+  return c.json({ ok: true });
+});
 
 /** 写真の表示（管理画面だけ。表示するたびに操作ログに記録する。要件定義書 S-12） */
 reservationRoutes.get("/photos/:id", async (c) => {

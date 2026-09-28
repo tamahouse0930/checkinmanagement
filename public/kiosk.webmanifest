@@ -1,0 +1,10 @@
+{
+  "name": "TAMAHOUSE Check-in",
+  "short_name": "Check-in",
+  "start_url": "/kiosk",
+  "scope": "/kiosk",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#f6f5f2",
+  "theme_color": "#2f5d50"
+}

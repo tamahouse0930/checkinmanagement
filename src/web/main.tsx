@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { AdminApp } from "./admin/AdminApp";
+import { KioskApp } from "./kiosk/KioskApp";
 import { HomePage } from "./public/HomePage";
 import { PrivacyPage } from "./public/PrivacyPage";
 import { RegistrationApp } from "./registration/RegistrationApp";
@@ -20,7 +21,7 @@ function Root() {
   if (path === "/admin" || path.startsWith("/admin/")) return <AdminApp />;
   const reg = /^\/(r|g)\/([A-Za-z0-9_-]{16,64})$/.exec(path);
   if (reg) return <RegistrationApp role={reg[1] as "r" | "g"} token={reg[2]} />;
-  if (path.startsWith("/kiosk")) return <Placeholder title="チェックイン・チェックアウト画面" />;
+  if (path === "/kiosk") return <KioskApp />;
   if (path === "/privacy") return <PrivacyPage />;
   if (path === "/") return <HomePage />;
   return <Placeholder title="このページ" />;

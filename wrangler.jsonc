@@ -22,7 +22,9 @@
   ],
   "vars": {
     // 写真の保存とメールの送信に使う Google アカウント（要件定義書 F21）
-    "GOOGLE_SERVICE_EMAIL": "tamahouse0930@gmail.com"
+    "GOOGLE_SERVICE_EMAIL": "tamahouse0930@gmail.com",
+    // 定期処理の通知メールに載せる管理画面の URL の起点
+    "PUBLIC_ORIGIN": "https://checkinmanagement.tamahouse0930.workers.dev"
   },
   "triggers": {
     "crons": ["*/15 * * * *"]

@@ -145,6 +145,130 @@ function GuestCard({ g, phoneLast4 }: { g: GuestView; phoneLast4: string | null 
   );
 }
 
+/** 写真の照合（身分証の写真と当日の写真を並べる。要件定義書 H-20） */
+function VerifySection(props: { r: ReservationDetail; act: (action: () => Promise<unknown>, done: string) => Promise<void> }) {
+  const { r, act } = props;
+  const [showMismatch, setShowMismatch] = useState(false);
+  const [note, setNote] = useState("");
+  const approved = r.guests.filter((g) => g.status === "approved");
+  const checkedIn = approved.filter((g) => g.checkedInAt);
+
+  const verify = () => {
+    if (!confirm("全員の写真を確認して、照合 OK にしますか？")) return;
+    act(() => api(`/api/admin/reservations/${r.id}/verify-photos`, { method: "POST", body: { result: "ok" } }), "照合 OK にしました");
+  };
+  const mismatch = () =>
+    act(async () => {
+      await api(`/api/admin/reservations/${r.id}/verify-photos`, { method: "POST", body: { result: "mismatch", note } });
+      setShowMismatch(false);
+    }, "不一致を記録しました。駆けつけの担当者に連絡してください");
+  const undoVerify = () => act(() => api(`/api/admin/reservations/${r.id}/verify-photos`, { method: "DELETE" }), "照合の記録を取り消しました");
+  const checkout = () => {
+    if (!confirm("管理者の操作でチェックアウト済みにしますか？")) return;
+    act(() => api(`/api/admin/reservations/${r.id}/checkout`, { method: "POST" }), "チェックアウト済みにしました");
+  };
+  const undoCheckout = () => {
+    if (!confirm("チェックアウトを取り消しますか？")) return;
+    act(() => api(`/api/admin/reservations/${r.id}/checkout`, { method: "DELETE" }), "チェックアウトを取り消しました");
+  };
+
+  return (
+    <section className="card">
+      <h2>④ チェックイン・写真の照合</h2>
+      <dl className="status">
+        <dt>チェックイン</dt>
+        <dd>
+          {checkedIn.length} / {approved.length}人{r.firstCheckinAt && `（最初: ${formatTime(r.firstCheckinAt)}）`}
+        </dd>
+        <dt>チェックアウト</dt>
+        <dd>
+          {r.checkedOutAt
+            ? `${formatTime(r.checkedOutAt)}（${r.checkedOutBy === "kiosk" ? "タブレット" : "管理者"}）`
+            : r.stayStatus === "in_house"
+              ? "滞在中"
+              : "—"}
+        </dd>
+        <dt>照合</dt>
+        <dd>
+          {r.photosVerifiedAt ? (r.photoMismatch ? `不一致あり（${formatTime(r.photosVerifiedAt)}）` : `照合 OK（${formatTime(r.photosVerifiedAt)}）`) : checkedIn.length > 0 ? "照合待ち" : "—"}
+        </dd>
+      </dl>
+      {r.photoMismatch && <p className="alert pre">不一致の内容: {r.photoMismatch}</p>}
+
+      {approved.length > 0 && (
+        <div className="verify-grid">
+          {approved.map((g) => (
+            <div key={g.seq} className="verify-row">
+              <strong>
+                {g.seq}. {g.fullName}
+              </strong>
+              <div className="verify-photos">
+                <figure>
+                  {g.idPhotoId ? (
+                    <img src={`/api/admin/photos/${g.idPhotoId}`} alt="" loading="lazy" />
+                  ) : (
+                    <div className="no-photo">{g.isJapanese && g.isUnder16 ? "16 歳未満（身分証なし）" : "写真なし"}</div>
+                  )}
+                  <figcaption>{g.isJapanese === false ? "パスポート" : "身分証"}</figcaption>
+                </figure>
+                <figure>
+                  {g.kioskPhotoId ? (
+                    <img src={`/api/admin/photos/${g.kioskPhotoId}`} alt="" loading="lazy" />
+                  ) : (
+                    <div className="no-photo">未チェックイン</div>
+                  )}
+                  <figcaption>当日{g.checkedInAt && ` ${formatTime(g.checkedInAt)}`}</figcaption>
+                </figure>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="actions">
+        {checkedIn.length > 0 && !r.photosVerifiedAt && (
+          <>
+            <button className="button primary" onClick={verify}>
+              全員を確認した：照合 OK
+            </button>
+            <button className="button danger" onClick={() => setShowMismatch(!showMismatch)}>
+              不一致あり
+            </button>
+          </>
+        )}
+        {r.photosVerifiedAt && (
+          <button className="button" onClick={undoVerify}>
+            照合の記録を取り消す
+          </button>
+        )}
+        {r.stayStatus !== "checked_out" && r.regStatus === "approved" && (
+          <button className="button" onClick={checkout}>
+            管理者の操作でチェックアウト
+          </button>
+        )}
+        {r.stayStatus === "checked_out" && (
+          <button className="button" onClick={undoCheckout}>
+            チェックアウトを取り消す
+          </button>
+        )}
+      </div>
+      {showMismatch && (
+        <div className="form">
+          <label>
+            不一致の内容（誰の写真が一致しないかなど）
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={500} />
+          </label>
+          <div className="actions">
+            <button className="button danger" onClick={mismatch} disabled={!note.trim()}>
+              記録する
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function ReservationPage({ id }: { id: string }) {
   const [r, setR] = useState<ReservationDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -402,6 +526,8 @@ export function ReservationPage({ id }: { id: string }) {
           )}
         </section>
       )}
+
+      {r.regStatus === "approved" || r.guestCheckedIn > 0 || r.stayStatus !== "not_arrived" ? <VerifySection r={r} act={act} /> : null}
     </div>
   );
 }
