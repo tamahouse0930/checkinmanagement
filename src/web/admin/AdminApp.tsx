@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api";
 import { navigate, usePathname } from "../lib/router";
 import { CalendarPage } from "./CalendarPage";
-import { LedgerPage } from "./LedgerPage";
+import { LedgerPage, LedgerStayPage } from "./LedgerPage";
+import { RegisterPrintPage } from "./RegisterPrintPage";
 import { ReservationForm } from "./ReservationForm";
 import { ReservationPage } from "./ReservationPage";
 import { SettingsPage } from "./SettingsPage";
@@ -21,6 +22,9 @@ const NAV = [
 function AdminRoute({ pathname, me }: { pathname: string; me: Me }) {
   if (pathname === "/admin/settings") return <SettingsPage me={me} />;
   if (pathname === "/admin/photos") return <LedgerPage />;
+  if (pathname === "/admin/photos/print") return <RegisterPrintPage />;
+  const stay = /^\/admin\/photos\/([^/]+)$/.exec(pathname);
+  if (stay) return <LedgerStayPage id={stay[1]} />;
   if (pathname === "/admin/reservations/new") return <ReservationForm />;
   const edit = /^\/admin\/reservations\/([^/]+)\/edit$/.exec(pathname);
   if (edit) return <ReservationForm editId={edit[1]} />;
@@ -80,7 +84,7 @@ export function AdminApp() {
               key={item.path}
               href={item.path}
               className={
-                (item.path === "/admin" ? pathname === "/admin" || pathname.startsWith("/admin/reservations") : pathname === item.path)
+                (item.path === "/admin" ? pathname === "/admin" || pathname.startsWith("/admin/reservations") : pathname === item.path || pathname.startsWith(`${item.path}/`))
                   ? "active"
                   : undefined
               }

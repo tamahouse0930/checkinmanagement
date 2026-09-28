@@ -1277,3 +1277,217 @@ label.check.inline {
 .inline-check {
   align-self: end;
 }
+
+/* ---- 名簿・写真台帳（宿泊の一覧と宿泊の名簿） ---- */
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.stay-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.stay-table th,
+.stay-table td {
+  text-align: left;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.stay-table th {
+  color: var(--muted);
+  font-weight: normal;
+  font-size: 0.8rem;
+}
+
+.stay-table a {
+  color: var(--primary);
+  font-weight: bold;
+}
+
+.stay-table small {
+  color: var(--muted);
+}
+
+.export-card summary {
+  cursor: pointer;
+}
+
+.register-list {
+  display: grid;
+  gap: 16px;
+}
+
+.register-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+@media (max-width: 700px) {
+  .register-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.register-photos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.register-photos figure {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.register-photos img {
+  width: 100%;
+  height: 200px;
+  object-fit: contain;
+  background: var(--bg);
+  border-radius: 6px;
+}
+
+.register-photos .no-photo {
+  height: 200px;
+}
+
+.register-photos figcaption {
+  display: grid;
+  gap: 2px;
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
+.register-photos .photo-label {
+  font-weight: bold;
+  color: var(--text);
+}
+
+.register-photos .file-name {
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* ---- 印刷用の宿泊者名簿 ---- */
+
+.print-options {
+  align-items: center;
+}
+
+.print-options .check {
+  margin: 0;
+}
+
+.register-sheet {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 24px;
+}
+
+.register-sheet h1 {
+  font-size: 1.4rem;
+  margin: 0 0 4px;
+}
+
+.register-sheet header p {
+  margin: 2px 0;
+  font-size: 0.85rem;
+}
+
+.register-stay {
+  margin-top: 20px;
+  break-inside: avoid;
+}
+
+.register-stay h2 {
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+
+.register-stay table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.register-stay th,
+.register-stay td {
+  border: 1px solid #999;
+  padding: 4px 6px;
+  text-align: left;
+  vertical-align: top;
+  word-break: break-all;
+}
+
+.register-stay th {
+  background: #f0eeea;
+}
+
+.register-copies {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.register-copies figure {
+  margin: 0;
+  break-inside: avoid;
+}
+
+.register-copies img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid #ccc;
+}
+
+.register-copies figcaption,
+.register-foot {
+  font-size: 0.75rem;
+  margin: 2px 0 0;
+}
+
+/* 印刷するときは、メニューやボタンを出さず、名簿だけを印刷する */
+@media print {
+  .admin-header,
+  .no-print {
+    display: none !important;
+  }
+
+  body,
+  :root {
+    background: #fff;
+  }
+
+  .admin-main {
+    max-width: none;
+    padding: 0;
+  }
+
+  .card,
+  .register-sheet {
+    border: none;
+    padding: 0;
+  }
+
+  .register-row {
+    break-inside: avoid;
+  }
+}
