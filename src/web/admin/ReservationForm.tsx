@@ -17,7 +17,7 @@ interface FormState {
 export function ReservationForm({ editId }: { editId?: string }) {
   const params = new URLSearchParams(location.search);
   const initialDate = params.get("date") ?? jstNow().date;
-  const [isTest, setIsTest] = useState(params.get("test") === "1");
+  const [isTest, setIsTest] = useState(false);
   const [form, setForm] = useState<FormState>({
     checkInDate: initialDate,
     checkOutDate: addDays(initialDate, 1),
@@ -73,12 +73,6 @@ export function ReservationForm({ editId }: { editId?: string }) {
   return (
     <section className="card">
       <h2>{editId ? "宿泊の編集" : isTest ? "テスト予約の作成" : "宿泊の登録"}</h2>
-      {!editId && (
-        <label className="check">
-          <input type="checkbox" checked={isTest} onChange={(e) => setIsTest(e.target.checked)} />
-          テスト予約にする（本番のタブレットや名簿に出さず、7 日後に自動で削除します）
-        </label>
-      )}
       <form onSubmit={submit} className="form">
         <div className="row">
           <label>
@@ -114,7 +108,16 @@ export function ReservationForm({ editId }: { editId?: string }) {
           <button className="button" type="button" onClick={() => history.back()}>
             キャンセル
           </button>
+          {!editId && (
+            <label className="check inline">
+              <input type="checkbox" checked={isTest} onChange={(e) => setIsTest(e.target.checked)} />
+              テスト予約にする
+            </label>
+          )}
         </div>
+        {!editId && isTest && (
+          <p className="note">テスト予約は、本番のタブレットや名簿に出さず、作成から 7 日後に自動で削除します。</p>
+        )}
       </form>
     </section>
   );

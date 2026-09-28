@@ -148,9 +148,6 @@ export function CalendarPage() {
         <button className="button" onClick={sync} disabled={syncing}>
           {syncing ? "取り込み中…" : "最新化"}
         </button>
-        <button className="button" onClick={() => navigate("/admin/reservations/new?test=1")}>
-          テスト予約
-        </button>
         <button className="button primary" onClick={() => navigate("/admin/reservations/new")}>
           ＋ 宿泊を登録
         </button>

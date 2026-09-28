@@ -257,6 +257,12 @@ label.check {
   font-size: 0.9rem;
 }
 
+label.check.inline {
+  align-items: center;
+  margin: 0 0 0 8px;
+  color: var(--text);
+}
+
 .pre {
   white-space: pre-wrap;
 }
