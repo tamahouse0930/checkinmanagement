@@ -1201,7 +1201,7 @@ label.check.inline {
   padding: 0 10px;
 }
 
-/* ---- 名簿・写真台帳 ---- */
+/* ---- 名簿管理 ---- */
 
 .ledger-search {
   grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
@@ -1278,7 +1278,7 @@ label.check.inline {
   align-self: end;
 }
 
-/* ---- 名簿・写真台帳（宿泊の一覧と宿泊の名簿） ---- */
+/* ---- 名簿管理（宿泊の一覧と宿泊の名簿） ---- */
 
 .table-wrap {
   overflow-x: auto;
@@ -1490,4 +1490,9 @@ label.check.inline {
   .register-row {
     break-inside: avoid;
   }
+}
+
+.sub-heading {
+  font-size: 0.95rem;
+  margin: 16px 0 4px;
 }

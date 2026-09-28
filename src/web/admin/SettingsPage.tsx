@@ -384,10 +384,10 @@ interface DeviceRow {
   created_at: string;
 }
 
-/** 玄関タブレットの登録・取り消しとテスト（要件定義書 T-10、H-32） */
+/** チェックイン用タブレットの登録・取り消しとテスト（要件定義書 T-10、H-32） */
 function DevicesSection() {
   const [rows, setRows] = useState<DeviceRow[]>([]);
-  const [name, setName] = useState("玄関タブレット");
+  const [name, setName] = useState("チェックイン用タブレット");
   const [pairing, setPairing] = useState<{ code: string; expiresAt: string } | null>(null);
   const { message, run } = useMessage();
   const load = () => api<{ devices: DeviceRow[] }>("/api/admin/devices").then((r) => setRows(r.devices));
@@ -410,7 +410,12 @@ function DevicesSection() {
 
   return (
     <section className="card">
-      <h2>玄関タブレット</h2>
+      <h2>チェックイン用タブレットの登録</h2>
+      <p className="note">
+        玄関に置いて、ゲストがチェックイン・チェックアウトに使うタブレットを、このシステムに登録（紐付け）します。
+        登録したタブレットだけが、チェックイン・チェックアウトの画面を使えます。
+      </p>
+      <h3 className="sub-heading">登録済みのタブレット</h3>
       <ul className="list">
         {rows.map((d) => (
           <li key={d.id}>
@@ -423,12 +428,14 @@ function DevicesSection() {
             </button>
           </li>
         ))}
-        {rows.length === 0 && <li className="note">登録されたタブレットはありません</li>}
+        {rows.length === 0 && <li className="note">まだ登録されていません</li>}
       </ul>
+      <h3 className="sub-heading">新しいタブレットを登録する</h3>
+      <p className="note">タブレットの名前（管理用。例: 玄関の iPad）を入れて「登録用のコードを発行」を押し、表示されたコードをタブレットで入力します。</p>
       <div className="form inline ical-add">
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={50} placeholder="タブレットの名前" />
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={50} placeholder="タブレットの名前（例: 玄関の iPad）" />
         <button className="button" onClick={createPairing} disabled={!name.trim()}>
-          タブレットを追加
+          登録用のコードを発行
         </button>
       </div>
       {pairing && (

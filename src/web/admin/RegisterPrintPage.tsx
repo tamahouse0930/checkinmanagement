@@ -77,7 +77,7 @@ export function RegisterPrintPage() {
     <div className="stack register-print">
       <div className="no-print stack">
         <button className="link" onClick={back}>
-          ← 名簿・写真台帳に戻る
+          ← 名簿管理に戻る
         </button>
         <section className="card">
           <div className="actions print-options">

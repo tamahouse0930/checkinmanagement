@@ -4,7 +4,7 @@ import { CHANNEL_LABEL, type Channel } from "../../shared/progress";
 import { api } from "../lib/api";
 import { navigate } from "../lib/router";
 
-/** 名簿・写真台帳（要件定義書 H-30、H-33）。検索結果は宿泊の一覧、日付を押すとその宿泊の名簿と写真を表示する */
+/** 名簿管理（要件定義書 H-30、H-33）。検索結果は宿泊の一覧、日付を押すとその宿泊の名簿と写真を表示する */
 
 interface StaySummary {
   reservationId: string;
@@ -151,7 +151,7 @@ export function LedgerPage() {
   return (
     <div className="stack">
       <section className="card">
-        <h2>名簿・写真台帳</h2>
+        <h2>名簿管理</h2>
         <p className="note">期間を指定して検索すると、その期間の宿泊が一覧で表示されます。日付を押すと、その宿泊の名簿と写真を表示します。</p>
         <form
           className="form ledger-search"

@@ -15,7 +15,7 @@ interface Me {
 
 const NAV = [
   { path: "/admin", label: "カレンダー" },
-  { path: "/admin/photos", label: "名簿・写真台帳" },
+  { path: "/admin/photos", label: "名簿管理" },
   { path: "/admin/settings", label: "設定" },
 ];
 

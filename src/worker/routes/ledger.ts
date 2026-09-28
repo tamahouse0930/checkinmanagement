@@ -3,7 +3,7 @@ import { isValidDate } from "../../shared/dates";
 import type { AppEnv } from "../env";
 import { auditStatement } from "../lib/audit";
 
-/** 名簿・写真台帳（要件定義書 H-33、設計書 4.13）と名簿の CSV 出力（要件定義書 H-30） */
+/** 名簿管理（要件定義書 H-33、設計書 4.13）と名簿の CSV 出力（要件定義書 H-30） */
 export const ledgerRoutes = new Hono<AppEnv>();
 
 interface StayRow {
@@ -29,7 +29,7 @@ function range(c: { req: { query: (k: string) => string | undefined } }): { from
 }
 
 /**
- * 名簿・写真台帳の検索結果（宿泊の一覧）。宿泊日（チェックイン日〜チェックアウト日）が期間に重なり、
+ * 名簿管理の検索結果（宿泊の一覧）。宿泊日（チェックイン日〜チェックアウト日）が期間に重なり、
  * 名簿か写真がある宿泊を返す。索引 idx_reservations_checkout で期間の予約に絞る
  */
 ledgerRoutes.get("/stays", async (c) => {
