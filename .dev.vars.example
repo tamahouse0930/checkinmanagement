@@ -1,0 +1,13 @@
+# ローカル開発用の秘密情報。このファイルを .dev.vars にコピーして値を入れる（.dev.vars はコミットしない）
+# 本番では `npx wrangler secret put <名前>` で登録する
+
+# Google Cloud の OAuth クライアント（ログインと、ドライブ・Gmail の連携の両方に使う）
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+# 管理画面のセッション Cookie の署名鍵（32 バイト以上のランダムな文字列）
+SESSION_SECRET=
+
+# Google のリフレッシュトークンを暗号化する鍵（32 バイトを Base64 にしたもの）
+# 作り方: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+TOKEN_ENC_KEY=

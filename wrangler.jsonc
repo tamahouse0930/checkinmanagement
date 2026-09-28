@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tamahouse-checkin",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    // 画面（React）は Static Assets から配信する。API と Google ログインだけ Worker を通す
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/auth/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tamahouse-checkin",
+      // 本番の D1 を作成したら、`wrangler d1 create tamahouse-checkin` が表示する ID に置き換える
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    // 写真の保存とメールの送信に使う Google アカウント（要件定義書 F21）
+    "GOOGLE_SERVICE_EMAIL": "tamahouse0930@gmail.com"
+  },
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  },
+  "observability": {
+    "enabled": true
+  }
+}
