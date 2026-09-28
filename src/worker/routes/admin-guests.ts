@@ -4,7 +4,7 @@ import { EMPTY_GUEST, type GuestFields, normalizeGuest } from "../../shared/gues
 import type { AppEnv } from "../env";
 import { auditStatement } from "../lib/audit";
 import { nowIso } from "../lib/time";
-import { countersStatement, type GuestRow, type ReservationRow, toFields } from "../services/guests";
+import { countersStatement, type GuestRow, passportCheckFor, type ReservationRow, toFields } from "../services/guests";
 import { deletePhotos, detectImageType, MAX_PHOTO_BYTES, renamePhotosForGuests, saveIdPhoto } from "../services/photos";
 import { guestPatchSchema } from "./registration";
 
@@ -78,7 +78,7 @@ function revisionStatement(
 /** 項目の修正（承認済みの人も修正できる。変更前と変更後を記録する） */
 adminGuestRoutes.patch("/guests/:id", async (c) => {
   const body = await c.req.json();
-  const parsed = guestPatchSchema.omit({ consent: true }).safeParse(body);
+  const parsed = guestPatchSchema.omit({ consent: true, passportMrzNumber: true }).safeParse(body);
   if (!parsed.success) return badRequest(c, "入力内容を確認してください");
   const loaded = await loadGuest(c, c.req.param("id"));
   if (!loaded) return badRequest(c, "宿泊者が見つかりません", 404);
@@ -88,8 +88,10 @@ adminGuestRoutes.patch("/guests/:id", async (c) => {
   const after: GuestFields = { ...before, ...parsed.data };
   const now = nowIso();
   const db = c.var.db;
+  const check = passportCheckFor(normalizeGuest(after), guest.passport_mrz_number, guest.passport_check !== null);
   await db.batch([
     fieldsStatement(c, guest.id, after, now),
+    db.prepare("UPDATE guests SET passport_check = ? WHERE id = ?").bind(check, guest.id),
     revisionStatement(c, guest, "update", before, normalizeGuest(after), typeof body.reason === "string" ? body.reason.slice(0, 500) : null),
     countersStatement(db, reservation.id, now),
     auditStatement(db, `admin:${c.var.admin.email}`, "update_guest", guest.id),
@@ -167,7 +169,7 @@ adminGuestRoutes.delete("/guests/:id", async (c) => {
 
 /** 管理者による宿泊者の追加（予約サイトのメッセージで情報を受け取った場合など。そのまま承認済みにする） */
 adminGuestRoutes.post("/reservations/:id/guests", async (c) => {
-  const parsed = guestPatchSchema.omit({ consent: true }).safeParse(await c.req.json());
+  const parsed = guestPatchSchema.omit({ consent: true, passportMrzNumber: true }).safeParse(await c.req.json());
   if (!parsed.success) return badRequest(c, "入力内容を確認してください");
   const db = c.var.db;
   const id = c.req.param("id");

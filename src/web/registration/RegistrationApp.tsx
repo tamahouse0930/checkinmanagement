@@ -5,6 +5,8 @@ import { EMPTY_GUEST, type GuestFields, type GuestView, type MissingField, missi
 import { detectLang, isLang, LANG_NAME, LANGS, type Lang } from "../../shared/langs";
 import { fill, GUEST_TEXT, type GuestText } from "../i18n/guest";
 import { CountrySelect } from "./CountrySelect";
+import { alpha3ToAlpha2, samePassportNumber } from "../../shared/mrz";
+import { readPassport } from "./passportOcr";
 import { resizeImage } from "./photo";
 
 /** 宿泊者入力画面（代表者 /r/:token、同行者 /g/:token。設計書 4.3） */
@@ -93,7 +95,8 @@ function PhotoField(props: {
   uploadPath: string;
   photoId: string | null;
   disabled: boolean;
-  onUploaded: (photoId: string) => void;
+  /** 保存した写真の ID と、縮小した写真（パスポートの読み取りに使う） */
+  onUploaded: (photoId: string, image: Blob) => void;
 }) {
   const { t, api } = props;
   const [preview, setPreview] = useState<string | null>(null);
@@ -125,7 +128,7 @@ function PhotoField(props: {
       form.append("file", resized, "photo.jpg");
       const res = await api<{ photoId: string }>(props.uploadPath, { method: "POST", form });
       setState("saved");
-      props.onUploaded(res.photoId);
+      props.onUploaded(res.photoId, resized);
     } catch {
       setState("failed");
     } finally {
@@ -189,6 +192,43 @@ function GuestEditor(props: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** 写真から読み取った旅券番号（undefined = この画面では読み取りを試していない、null = 読み取れなかった） */
+  const [mrzNumber, setMrzNumber] = useState<string | null | undefined>(
+    props.guest?.passportCheck ? props.guest.passportMrzNumber : undefined,
+  );
+  const [ocr, setOcr] = useState<{ state: "idle" | "reading" | "done" | "failed" }>({ state: "idle" });
+  const passportMismatch =
+    g.isJapanese === false && !!mrzNumber && !!g.passportNumber && !samePassportNumber(g.passportNumber, mrzNumber);
+
+  /**
+   * パスポートの写真から MRZ を読み取り、空欄の国籍・氏名に入れる（要件定義書 G-16）。
+   * 旅券番号は、L と 1 のように写真からは確実に見分けられない文字があるため自動では入れず、
+   * ゲストが入力した番号と照合するだけにする（違っていれば、旅券番号の欄に注意を出す）
+   */
+  const readFromPassport = async (image: Blob) => {
+    setOcr({ state: "reading" });
+    try {
+      const result = await readPassport(image);
+      if (!result) {
+        setMrzNumber(null);
+        setOcr({ state: "failed" });
+        return;
+      }
+      setMrzNumber(result.numberValid ? result.passportNumber : null);
+      setG((prev) => {
+        const next = { ...prev };
+        const nationality = alpha3ToAlpha2(result.nationality3);
+        if (!next.nationality && nationality) next.nationality = nationality;
+        const name = [result.surname, result.givenNames].filter(Boolean).join(" ");
+        if (!next.fullName.trim() && name && result.namesClean) next.fullName = name;
+        return next;
+      });
+      setOcr({ state: result.numberValid ? "done" : "failed" });
+    } catch {
+      setMrzNumber(null);
+      setOcr({ state: "failed" });
+    }
+  };
   const editor = useRef<HTMLElement>(null);
 
   const set = <K extends keyof GuestFields>(key: K, value: GuestFields[K]) => setG((prev) => ({ ...prev, [key]: value }));
@@ -206,7 +246,9 @@ function GuestEditor(props: {
     setError(null);
     try {
       const { idPhotoId: _ignored, ...fields } = g;
-      const body = isCompanion ? { ...fields, consent } : fields;
+      // 写真から読み取った番号（読み取りを試した場合だけ送る。読み取れなかったときは null）
+      const withMrz = mrzNumber !== undefined ? { ...fields, passportMrzNumber: mrzNumber } : fields;
+      const body = isCompanion ? { ...withMrz, consent } : withMrz;
       await api(isCompanion ? "" : `/guests/${seq}`, { method: "PUT", body });
       await props.onSaved();
       return true;
@@ -272,9 +314,15 @@ function GuestEditor(props: {
                 uploadPath={isCompanion ? "/photos" : `/photos?seq=${seq}`}
                 photoId={g.idPhotoId}
                 disabled={disabled}
-                onUploaded={(id) => set("idPhotoId", id)}
+                onUploaded={(id, image) => {
+                  set("idPhotoId", id);
+                  if (g.isJapanese === false) void readFromPassport(image);
+                }}
               />
               {bad("idPhoto") && <p className="alert">{t.idPhotoRequired}</p>}
+              {ocr.state === "reading" && <p className="note">{t.ocrReading}</p>}
+              {ocr.state === "done" && <p className="notice">{t.ocrDone}</p>}
+              {ocr.state === "failed" && <p className="note">{t.ocrFailed}</p>}
             </div>
 
             <label className={bad("fullName")}>
@@ -300,6 +348,7 @@ function GuestEditor(props: {
                     inputMode="text"
                   />
                   {g.passportNumber && missing.includes("passportNumber") && <small className="alert">{t.passportFormat}</small>}
+                  {passportMismatch && <small className="alert">{fill(t.passportMismatch, { mrz: mrzNumber ?? "" })}</small>}
                 </label>
               </>
             )}

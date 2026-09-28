@@ -2,6 +2,10 @@ import type { Lang } from "../../shared/langs";
 
 /** 宿泊者入力画面の文言（要件定義書 L-04）。{n} などは差し込み */
 const ja = {
+  ocrReading: "パスポートを読み取っています…",
+  ocrDone: "パスポートから読み取りました。内容を確認してください。",
+  ocrFailed: "パスポートの番号を自動で読み取れませんでした。手で入力してください。",
+  passportMismatch: "写真から読み取った番号（{mrz}）と違います。確認してください。",
   idPhotoLabel: "身分証の写真",
   idPhotoRequired: "身分証の写真を撮影してください",
   consentLabel: "同意",
@@ -90,6 +94,10 @@ const ja = {
 type Dict = typeof ja;
 
 const en: Dict = {
+  ocrReading: "Reading your passport…",
+  ocrDone: "Details were read from your passport. Please check them.",
+  ocrFailed: "We couldn't read the passport number automatically. Please enter it manually.",
+  passportMismatch: "This doesn't match the number read from the photo ({mrz}). Please check it.",
   idPhotoLabel: "ID photo",
   idPhotoRequired: "Please take a photo of your ID",
   consentLabel: "Consent",
@@ -176,6 +184,10 @@ const en: Dict = {
 };
 
 const ko: Dict = {
+  ocrReading: "여권을 읽고 있습니다…",
+  ocrDone: "여권에서 정보를 읽었습니다. 내용을 확인해 주세요.",
+  ocrFailed: "여권 번호를 자동으로 읽지 못했습니다. 직접 입력해 주세요.",
+  passportMismatch: "사진에서 읽은 번호({mrz})와 다릅니다. 확인해 주세요.",
   idPhotoLabel: "신분증 사진",
   idPhotoRequired: "신분증 사진을 촬영해 주세요",
   consentLabel: "동의",
@@ -262,6 +274,10 @@ const ko: Dict = {
 };
 
 const zhHans: Dict = {
+  ocrReading: "正在读取护照…",
+  ocrDone: "已从护照中读取信息，请确认内容。",
+  ocrFailed: "无法自动读取护照号码，请手动输入。",
+  passportMismatch: "与从照片中读取的号码（{mrz}）不一致，请确认。",
   idPhotoLabel: "身份证件照片",
   idPhotoRequired: "请拍摄身份证件照片",
   consentLabel: "同意",
@@ -348,6 +364,10 @@ const zhHans: Dict = {
 };
 
 const zhHant: Dict = {
+  ocrReading: "正在讀取護照…",
+  ocrDone: "已從護照中讀取資料，請確認內容。",
+  ocrFailed: "無法自動讀取護照號碼，請手動輸入。",
+  passportMismatch: "與從照片中讀取的號碼（{mrz}）不一致，請確認。",
   idPhotoLabel: "身分證件照片",
   idPhotoRequired: "請拍攝身分證件照片",
   consentLabel: "同意",

@@ -158,7 +158,14 @@ function GuestCard({
           {!g.isJapanese && g.isJapanese !== null && (
             <>
               <dt>パスポート番号</dt>
-              <dd>{g.passportNumber || "—"}</dd>
+              <dd>
+                {g.passportNumber || "—"}
+                {g.passportCheck === "match" && <small className="note">（写真の番号と一致）</small>}
+                {g.passportCheck === "mismatch" && (
+                  <small className="alert">（写真から読み取った番号 {g.passportMrzNumber} と違います。写真で確認してください）</small>
+                )}
+                {g.passportCheck === "unreadable" && <small className="note">（写真から番号を読み取れませんでした。写真で確認してください）</small>}
+              </dd>
             </>
           )}
           <dt>住所</dt>

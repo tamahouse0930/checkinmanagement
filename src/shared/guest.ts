@@ -1,6 +1,7 @@
 /** 宿泊者名簿の項目と入力チェック（要件定義書 6 章）。画面と Worker で同じルールを使う */
 
 export type GuestStatus = "draft" | "ready" | "submitted" | "approved";
+export type PassportCheck = "match" | "mismatch" | "unreadable";
 export type EnteredBy = "representative" | "self" | "admin";
 
 export interface GuestFields {
@@ -23,6 +24,9 @@ export interface GuestView extends GuestFields {
   enteredBy: EnteredBy;
   entryUrl: string | null;
   consented: boolean;
+  /** 写真（MRZ）から読み取った旅券番号と、入力された番号との照合の結果（要件定義書 G-16） */
+  passportMrzNumber: string | null;
+  passportCheck: PassportCheck | null;
   /** 当日のタブレットの写真とチェックインの日時（管理画面だけで使う） */
   kioskPhotoId: string | null;
   checkedInAt: string | null;

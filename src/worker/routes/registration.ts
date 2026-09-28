@@ -3,7 +3,7 @@ import { z } from "zod";
 import { isCountryCode } from "../../shared/countries";
 import { formatDateJa, jstNow } from "../../shared/dates";
 import type { RegistrationView } from "../../shared/api-types";
-import type { GuestFields } from "../../shared/guest";
+import { type GuestFields, normalizeGuest } from "../../shared/guest";
 import { isLang, LANGS, type Lang } from "../../shared/langs";
 import type { AppEnv } from "../env";
 import { randomToken } from "../lib/crypto";
@@ -15,6 +15,7 @@ import {
   countersStatement,
   type GuestRow,
   loadGuests,
+  passportCheckFor,
   type ReservationRow,
   statusFor,
   toFields,
@@ -114,6 +115,8 @@ export const guestPatchSchema = z
     passportNumber: z.string().max(30),
     isUnder16: z.boolean(),
     consent: z.boolean(),
+    /** 写真（MRZ）から読み取った旅券番号。読み取れなかったときは null、読み取りを試していなければ送らない */
+    passportMrzNumber: z.string().max(20).nullable(),
   })
   .partial();
 
@@ -136,14 +139,17 @@ async function saveGuest(c: Context<AppEnv>, seq: number, body: unknown, asCompa
     return error(c, 409, "locked", "locked");
   }
 
-  const { consent, ...patch } = parsed.data;
+  const { consent, passportMrzNumber, ...patch } = parsed.data;
   const fields: GuestFields = { ...toFields(row), ...patch };
+  const mrzNumber = passportMrzNumber !== undefined ? passportMrzNumber : (row?.passport_mrz_number ?? null);
+  const ocrTried = passportMrzNumber !== undefined || row?.passport_check != null;
+  const passport = { mrzNumber, check: passportCheckFor(normalizeGuest(fields), mrzNumber, ocrTried) };
   const now = nowIso();
   const consentAt = asCompanion ? (consent === true ? now : consent === false ? null : row?.consent_at ?? null) : row?.consent_at ?? null;
   const enteredBy = asCompanion ? "self" : "representative";
   const status = statusFor(fields, asCompanion, consentAt !== null);
 
-  const stmts: D1PreparedStatement[] = [upsertGuestStatement(db, r.id, seq, fields, status, enteredBy, consentAt, now)];
+  const stmts: D1PreparedStatement[] = [upsertGuestStatement(db, r.id, seq, fields, status, enteredBy, consentAt, now, passport)];
   if (r.reg_status === "none") {
     stmts.push(db.prepare("UPDATE reservations SET reg_status = 'in_progress' WHERE id = ?").bind(r.id));
   } else if (r.reg_status === "submitted") {
