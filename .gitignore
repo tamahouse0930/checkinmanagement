@@ -3,3 +3,6 @@ dist/
 .wrangler/
 .dev.vars
 *.log
+
+# Google Cloud の画面のスクリーンショット（クライアントシークレットが写っている）
+OAuth.bmp
