@@ -4,6 +4,7 @@ import { Db } from "./lib/db";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
 import { publicRoutes } from "./routes/public";
+import { runScheduled } from "./services/scheduled";
 
 const app = new Hono<AppEnv>();
 
@@ -45,6 +46,8 @@ app.onError((error, c) => {
 
 export default {
   fetch: app.fetch,
-  // 定期処理（予約の取り込みなど）は段階 2 以降で実装する
-  async scheduled() {},
+  // 15 分ごとの定期処理（設計書 4.11）
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(runScheduled(env));
+  },
 } satisfies ExportedHandler<Env>;

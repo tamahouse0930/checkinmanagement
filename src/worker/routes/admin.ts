@@ -8,9 +8,11 @@ import { getSettings, invalidateSettings, parseRevoked, PROPERTY_ID, type Revoke
 import { nowIso } from "../lib/time";
 import { requireAdmin } from "../middleware/admin";
 import { sendMail } from "../services/google/gmail";
+import { reservationRoutes } from "./reservations";
 
 export const adminRoutes = new Hono<AppEnv>();
 adminRoutes.use("*", requireAdmin);
+adminRoutes.route("/", reservationRoutes);
 
 function badRequest(message: string) {
   return { error: { code: "bad_request", message } };
@@ -192,6 +194,58 @@ adminRoutes.put("/settings", async (c) => {
     auditStatement(db, `admin:${c.var.admin.email}`, "update_settings"),
   ]);
   invalidateSettings();
+  return c.json({ ok: true });
+});
+
+// ---- iCal の取得元（要件定義書 R-01） ----
+
+const icalSchema = z.object({
+  channel: z.enum(["airbnb", "booking"]),
+  url: z.url({ protocol: /^https$/ }).max(1000),
+});
+
+adminRoutes.get("/ical-sources", async (c) => {
+  const db = c.var.db;
+  const rows = await db.all(db.prepare("SELECT id, channel, url, last_synced_at, last_error FROM ical_sources LIMIT 10"));
+  return c.json({ sources: rows });
+});
+
+adminRoutes.post("/ical-sources", async (c) => {
+  const parsed = icalSchema.safeParse(await c.req.json());
+  if (!parsed.success) return c.json(badRequest("https で始まる iCal の URL を入力してください"), 400);
+  const db = c.var.db;
+  const id = crypto.randomUUID();
+  await db.batch([
+    db
+      .prepare("INSERT INTO ical_sources (id, property_id, channel, url) VALUES (?, ?, ?, ?)")
+      .bind(id, PROPERTY_ID, parsed.data.channel, parsed.data.url),
+    auditStatement(db, `admin:${c.var.admin.email}`, "add_ical_source", parsed.data.channel),
+  ]);
+  return c.json({ id }, 201);
+});
+
+adminRoutes.put("/ical-sources/:id", async (c) => {
+  const parsed = icalSchema.pick({ url: true }).safeParse(await c.req.json());
+  if (!parsed.success) return c.json(badRequest("https で始まる iCal の URL を入力してください"), 400);
+  const db = c.var.db;
+  await db.batch([
+    db.prepare("UPDATE ical_sources SET url = ?, last_error = NULL WHERE id = ?").bind(parsed.data.url, c.req.param("id")),
+    auditStatement(db, `admin:${c.var.admin.email}`, "update_ical_source", c.req.param("id")),
+  ]);
+  return c.json({ ok: true });
+});
+
+adminRoutes.delete("/ical-sources/:id", async (c) => {
+  const db = c.var.db;
+  try {
+    await db.batch([
+      db.prepare("DELETE FROM ical_sources WHERE id = ?").bind(c.req.param("id")),
+      auditStatement(db, `admin:${c.var.admin.email}`, "delete_ical_source", c.req.param("id")),
+    ]);
+  } catch {
+    // 取り込んだ予約が残っている取得元は、外部キーの制約で削除できない
+    return c.json(badRequest("この取得元から取り込んだ予約があるため削除できません。URL の変更で対応してください"), 400);
+  }
   return c.json({ ok: true });
 });
 

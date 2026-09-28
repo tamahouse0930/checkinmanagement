@@ -202,6 +202,100 @@ function GoogleSection({ google }: { google: SettingsResponse["google"] }) {
   );
 }
 
+interface IcalSourceRow {
+  id: string;
+  channel: "airbnb" | "booking";
+  url: string;
+  last_synced_at: string | null;
+  last_error: string | null;
+}
+
+const ICAL_CHANNELS = [
+  { channel: "airbnb", label: "Airbnb", help: "Airbnb のリスティングの「カレンダーの同期」→「カレンダーをエクスポート」で表示される URL" },
+  { channel: "booking", label: "Booking.com", help: "Booking.com の「料金・在庫」→「カレンダーの同期」→「カレンダーをエクスポート」で表示される URL" },
+] as const;
+
+/** iCal の URL は予約の情報を読める鍵のようなものなので、一覧では一部だけを表示する */
+function maskUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.host}/…${url.slice(-6)}`;
+  } catch {
+    return "…";
+  }
+}
+
+function IcalSection() {
+  const [rows, setRows] = useState<IcalSourceRow[]>([]);
+  const [inputs, setInputs] = useState<Record<string, string>>({});
+  const { message, run } = useMessage();
+  const load = () => api<{ sources: IcalSourceRow[] }>("/api/admin/ical-sources").then((r) => setRows(r.sources));
+  useEffect(() => {
+    load();
+  }, []);
+
+  const save = (channel: "airbnb" | "booking", existing?: IcalSourceRow) => {
+    const url = (inputs[channel] ?? "").trim();
+    run(async () => {
+      if (existing) await api(`/api/admin/ical-sources/${existing.id}`, { method: "PUT", body: { url } });
+      else await api("/api/admin/ical-sources", { method: "POST", body: { channel, url } });
+      setInputs({ ...inputs, [channel]: "" });
+      await load();
+    }, "保存しました。カレンダーの「最新化」で取り込めます");
+  };
+
+  return (
+    <section className="card">
+      <h2>予約の取り込み（iCal）</h2>
+      <p className="note">毎朝 5 時に自動で取り込みます。カレンダーの「最新化」ですぐに取り込むこともできます。</p>
+      {ICAL_CHANNELS.map(({ channel, label, help }) => {
+        const existing = rows.find((r) => r.channel === channel);
+        return (
+          <div key={channel} className="ical-row">
+            <h3>{label}</h3>
+            {existing ? (
+              <dl className="status">
+                <dt>登録済みの URL</dt>
+                <dd>{maskUrl(existing.url)}</dd>
+                <dt>最後に取り込んだ日時</dt>
+                <dd>{formatDate(existing.last_synced_at)}</dd>
+                {existing.last_error && (
+                  <>
+                    <dt>エラー</dt>
+                    <dd className="alert">{existing.last_error}</dd>
+                  </>
+                )}
+              </dl>
+            ) : (
+              <p className="note">未登録</p>
+            )}
+            <form
+              className="form inline"
+              onSubmit={(e) => {
+                e.preventDefault();
+                save(channel, existing);
+              }}
+            >
+              <input
+                type="url"
+                placeholder={existing ? "新しい URL（変更する場合）" : "iCal の URL"}
+                value={inputs[channel] ?? ""}
+                onChange={(e) => setInputs({ ...inputs, [channel]: e.target.value })}
+                required
+              />
+              <button className="button" type="submit">
+                {existing ? "変更" : "登録"}
+              </button>
+            </form>
+            <p className="note">{help}</p>
+          </div>
+        );
+      })}
+      <Message message={message} />
+    </section>
+  );
+}
+
 function SessionsSection() {
   const [rows, setRows] = useState<SessionRow[]>([]);
   const { message, run } = useMessage();
@@ -258,6 +352,7 @@ export function SettingsPage({ me }: { me: { email: string } }) {
     <div className="stack">
       <p className="note">ログイン中: {me.email}</p>
       <GoogleSection google={settings.google} />
+      <IcalSection />
       <BasicSection initial={settings.property} onSaved={load} />
       <EmailListSection
         title="通知メールの宛先"

@@ -229,6 +229,247 @@ button.link.danger {
   font-size: 0.9rem;
 }
 
+select,
+textarea {
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+}
+
+.button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+label.check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+}
+
+.pre {
+  white-space: pre-wrap;
+}
+
+.url {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  word-break: break-all;
+  background: var(--bg);
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.ical-row {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.ical-row h3 {
+  font-size: 1rem;
+  margin: 4px 0;
+}
+
+.ical-row .form.inline {
+  grid-template-columns: 1fr auto;
+}
+
+/* ---- 要対応 ---- */
+
+.attention {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 0.85rem;
+  margin-left: 4px;
+}
+
+.chip.warn {
+  background: #fff4d6;
+  border-color: #e8c35a;
+}
+
+/* ---- カレンダー ---- */
+
+.calendar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-toolbar .spacer {
+  flex: 1;
+}
+
+.month-title {
+  font-size: 1.1rem;
+  min-width: 7em;
+  text-align: center;
+}
+
+.calendar {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.calendar-head,
+.calendar-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.calendar-head div {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.calendar-week {
+  border-bottom: 1px solid var(--line);
+  min-height: 64px;
+  row-gap: 2px;
+}
+
+.calendar-week .day {
+  font: inherit;
+  font-size: 0.8rem;
+  border: none;
+  border-right: 1px solid var(--line);
+  background: none;
+  text-align: left;
+  vertical-align: top;
+  padding: 2px 4px 0;
+  cursor: pointer;
+  align-self: stretch;
+  display: flex;
+  align-items: flex-start;
+}
+
+.calendar-week .day:hover {
+  background: var(--bg);
+}
+
+.calendar-week .day.other-month {
+  color: #b8b2a7;
+}
+
+.calendar-week .day.today {
+  font-weight: bold;
+  color: var(--primary);
+  box-shadow: inset 0 2px 0 var(--primary);
+}
+
+.sat {
+  color: #2a5db0;
+}
+
+.sun {
+  color: var(--danger);
+}
+
+.calendar .bar {
+  position: relative;
+  z-index: 1;
+  margin: 0 2px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  line-height: 26px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: none;
+  color: #1d1b17;
+}
+
+/* 帯と見本の色（進捗。設計書 4.8） */
+.p-url_unsent,
+.p-url_sent {
+  background: #dcd8d0;
+}
+.p-in_progress,
+.p-rejected {
+  background: #f6df8e;
+}
+.p-pending {
+  background: #f4b37a;
+}
+.p-approved,
+.p-code_sent {
+  background: #a9c8ef;
+}
+.p-approved {
+  box-shadow: inset 0 0 0 2px #2a5db0;
+}
+.p-in_house {
+  background: #9fd3a8;
+}
+.p-checked_out {
+  background: #8f8a80;
+  color: #fff;
+}
+.p-blocked {
+  background: repeating-linear-gradient(45deg, #ebe8e2, #ebe8e2 4px, #d6d1c8 4px, #d6d1c8 8px);
+  color: var(--muted);
+}
+.p-cancelled {
+  background: #f1efea;
+  color: var(--muted);
+  text-decoration: line-through !important;
+}
+.test {
+  outline: 2px dashed #7a5bc7;
+  outline-offset: -2px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
 .notice,
 .alert {
   padding: 8px 12px;

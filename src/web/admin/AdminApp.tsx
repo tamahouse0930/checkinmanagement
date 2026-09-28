@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api";
 import { navigate, usePathname } from "../lib/router";
+import { CalendarPage } from "./CalendarPage";
+import { ReservationForm } from "./ReservationForm";
+import { ReservationPage } from "./ReservationPage";
 import { SettingsPage } from "./SettingsPage";
 
 interface Me {
@@ -13,6 +16,17 @@ const NAV = [
   { path: "/admin/photos", label: "写真台帳" },
   { path: "/admin/settings", label: "設定" },
 ];
+
+function AdminRoute({ pathname, me }: { pathname: string; me: Me }) {
+  if (pathname === "/admin/settings") return <SettingsPage me={me} />;
+  if (pathname === "/admin/photos") return <p className="note">写真台帳は段階 5 で作ります。</p>;
+  if (pathname === "/admin/reservations/new") return <ReservationForm />;
+  const edit = /^\/admin\/reservations\/([^/]+)\/edit$/.exec(pathname);
+  if (edit) return <ReservationForm editId={edit[1]} />;
+  const detail = /^\/admin\/reservations\/([^/]+)$/.exec(pathname);
+  if (detail) return <ReservationPage id={detail[1]} />;
+  return <CalendarPage />;
+}
 
 function urlError(): string | null {
   return new URLSearchParams(location.search).get("error");
@@ -64,7 +78,11 @@ export function AdminApp() {
             <a
               key={item.path}
               href={item.path}
-              className={pathname === item.path ? "active" : undefined}
+              className={
+                (item.path === "/admin" ? pathname === "/admin" || pathname.startsWith("/admin/reservations") : pathname === item.path)
+                  ? "active"
+                  : undefined
+              }
               onClick={(e) => {
                 e.preventDefault();
                 navigate(item.path);
@@ -78,14 +96,8 @@ export function AdminApp() {
           ログアウト
         </button>
       </header>
-      <main className="admin-main">
-        {pathname === "/admin/settings" ? (
-          <SettingsPage me={me} />
-        ) : pathname === "/admin/photos" ? (
-          <p className="note">写真台帳は段階 5 で作ります。</p>
-        ) : (
-          <p className="note">カレンダーは段階 2 で作ります。</p>
-        )}
+      <main className="admin-main" key={pathname + location.search}>
+        <AdminRoute pathname={pathname} me={me} />
       </main>
     </div>
   );
