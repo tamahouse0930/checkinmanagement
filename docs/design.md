@@ -349,7 +349,8 @@ CREATE TABLE photos (
   size_bytes      INTEGER NOT NULL,
   taken_at        TEXT NOT NULL,          -- 撮影（アップロード）日時
   delete_after    TEXT,                   -- 削除予定日。チェックアウト日 + 3 年（キャンセル時は + 7 日）
-  created_at      TEXT NOT NULL
+  created_at      TEXT NOT NULL,
+  ocr_at          TEXT                    -- パスポートの読み取り（G-16）を行った日時。1 枚につき 1 回だけ
 );
 CREATE INDEX idx_photos_reservation ON photos (reservation_id);
 CREATE INDEX idx_photos_taken ON photos (taken_at);
@@ -587,6 +588,7 @@ flowchart LR
 
 - パスポートの顔写真ページの下にある 2 行の英数字（MRZ）の 2 行目の 1〜9 文字目が旅券番号、10 文字目がそのチェック用の数字。チェック用の数字が合えば、読み取りが正しいと判断できる
 - 文字認識は Google ドライブの OCR で行う。写真の保存後に画面から `POST /api/r/photos/:id/ocr`（同行者は `/api/g/photos/:id/ocr`）を呼ぶと、Worker が保存済みの写真を Google ドキュメントに変換してコピーし（このとき文字認識される）、テキストを取り出してコピーを削除し、MRZ を解析して返す
+- 読み取れるのは、承認前で日本人と答えていない人の、今の身分証の写真だけ。1 枚の写真につき 1 回だけ読み取り（`photos.ocr_at` に印を付ける）、Google 側の失敗のときだけ印を外してやり直せるようにする。同じ写真で何度も依頼されて、Google ドライブと Worker の無料枠を無駄に使わないため
 - ゲストのスマホでは読み取り用のデータのダウンロードも計算もしない（通信は読み取りの依頼と結果だけ）。Worker も文字認識そのものは行わないので、CPU 時間はほとんど使わない
 - 写真は保存先と同じ Google ドライブの中でコピーするだけで、ほかの読み取りサービスには送らない。コピーを消し損ねても、宿泊ごとのフォルダの中にあるため、保存期間が過ぎればフォルダごと削除される
 - 判定結果（`match` / `mismatch` / `unreadable`）を保存し、管理画面に表示する。`mismatch` でも送信は止めない（写真を見て管理者が判断する）

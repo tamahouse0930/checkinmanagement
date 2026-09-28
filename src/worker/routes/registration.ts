@@ -230,22 +230,34 @@ async function servePhoto(c: Context<AppEnv>, photoId: string, allowedGuestSeq: 
 
 /**
  * 保存済みのパスポートの写真から MRZ を読み取る（要件定義書 G-16）。文字認識は Google ドライブで行うため、
- * ゲストのスマホでは読み取り用のデータのダウンロードも計算もしない。読み取れなければ result は null
+ * ゲストのスマホでは読み取り用のデータのダウンロードも計算もしない。読み取れなければ result は null。
+ * 対象は、承認前の日本人以外の人の、今の身分証の写真だけ。1 枚の写真につき 1 回だけ読み取り、失敗したときだけやり直せる
  */
 async function readPassportPhoto(c: Context<AppEnv>, photoId: string, allowedGuestSeq: number | null) {
   const r = c.var.reservation;
   const db = c.var.db;
-  const photo = await db.first<{ drive_file_id: string; seq: number }>(
+  const photo = await db.first<{ drive_file_id: string; seq: number; is_japanese: number | null; status: string; ocr_at: string | null }>(
     db
-      .prepare("SELECT p.drive_file_id, g.seq FROM photos p JOIN guests g ON g.id = p.guest_id WHERE p.id = ? AND p.reservation_id = ?")
+      .prepare(
+        `SELECT p.drive_file_id, p.ocr_at, g.seq, g.is_japanese, g.status FROM photos p JOIN guests g ON g.id = p.guest_id
+         WHERE p.id = ? AND p.reservation_id = ? AND g.id_photo_id = p.id`,
+      )
       .bind(photoId, r.id),
   );
   if (!photo || (allowedGuestSeq !== null && photo.seq !== allowedGuestSeq)) return error(c, 404, "not_found", "not_found");
+  // 国籍の答えは撮影の時点ではまだ保存されていないことがあるため、未回答（null）は対象に含める
+  if (photo.status === "approved" || photo.is_japanese === 1) return error(c, 409, "not_applicable", "not_applicable");
+
+  // 同時に届いた依頼も含めて 1 回だけ読み取るよう、印を付けられた場合だけ進む
+  const claimed = await db.run(db.prepare("UPDATE photos SET ocr_at = ? WHERE id = ? AND ocr_at IS NULL").bind(nowIso(), photoId));
+  if (claimed.meta.changes === 0) return error(c, 409, "already_read", "already_read");
   try {
     const text = await ocrImage(c.env, db, photo.drive_file_id);
     return c.json({ result: text ? parseMrz(text) : null });
   } catch (e) {
     console.error(JSON.stringify({ event: "passport_ocr_failed", message: String(e) }));
+    // Google 側の一時的な失敗なら、もう一度撮り直さずに読み取りをやり直せるよう、印を外す
+    await db.run(db.prepare("UPDATE photos SET ocr_at = NULL WHERE id = ?").bind(photoId));
     return error(c, 502, "ocr_failed", "ocr_failed");
   }
 }
