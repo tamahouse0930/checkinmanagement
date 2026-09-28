@@ -3,6 +3,7 @@ import { LANG_NAME, LANGS, type Lang } from "../../shared/langs";
 import { fill } from "../i18n/guest";
 import { KIOSK_TEXT, type KioskText } from "../i18n/kiosk";
 import { resizeImage } from "../registration/photo";
+import { acquireCamera, releaseCamera } from "./cameraStream";
 
 /** 玄関タブレットの画面（要件定義書 5.4、設計書 4.6） */
 
@@ -100,12 +101,12 @@ function Camera(props: { t: KioskText; name: string; onCaptured: (blob: Blob) =>
   const [photo, setPhoto] = useState<{ blob: Blob; url: string } | null>(null);
   const [state, setState] = useState<"starting" | "ready" | "error" | "saving" | "failed">("starting");
 
+  // カメラは起動し直さずに使い回す（毎回許可を求められないようにする。cameraStream.ts）
   useEffect(() => {
     let cancelled = false;
-    navigator.mediaDevices
-      ?.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false })
+    acquireCamera()
       .then((s) => {
-        if (cancelled) return s.getTracks().forEach((track) => track.stop());
+        if (cancelled) return;
         stream.current = s;
         if (video.current) {
           video.current.srcObject = s;
@@ -113,11 +114,13 @@ function Camera(props: { t: KioskText; name: string; onCaptured: (blob: Blob) =>
         }
         setState("ready");
       })
-      .catch(() => setState("error"));
-    if (!navigator.mediaDevices) setState("error");
+      .catch(() => {
+        if (!cancelled) setState("error");
+      });
     return () => {
       cancelled = true;
-      stream.current?.getTracks().forEach((track) => track.stop());
+      if (video.current) video.current.srcObject = null;
+      releaseCamera();
     };
   }, []);
 
