@@ -81,7 +81,7 @@ const MISSING_KEY: Record<MissingField, keyof GuestText> = {
   contact: "contact",
   nationality: "nationality",
   passportNumber: "passportNumber",
-  idPhoto: "takePhoto",
+  idPhoto: "idPhotoLabel",
 };
 
 // ---- 写真 ----
@@ -188,9 +188,16 @@ function GuestEditor(props: {
   const [showMissing, setShowMissing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const editor = useRef<HTMLElement>(null);
 
   const set = <K extends keyof GuestFields>(key: K, value: GuestFields[K]) => setG((prev) => ({ ...prev, [key]: value }));
   const missing = missingFields(normalizeGuest(g));
+  // 同行者は本人の同意も必要（要件定義書 G-18）
+  const problems: (MissingField | "consent")[] = [...missing, ...(isCompanion && !consent ? (["consent"] as const) : [])];
+  /** 保存を押した後、足りない項目を赤く示す */
+  const bad = (field: MissingField | "consent") => (showMissing && problems.includes(field) ? "missing" : undefined);
+  const problemLabel = (p: MissingField | "consent") => (p === "consent" ? t.consentLabel : t[MISSING_KEY[p]]);
   const sameAddress = seq > 1 && !!representative && g.address === representative.address && g.addressCountry === representative.addressCountry;
   const sameContact = seq > 1 && !!representative && g.contact === representative.contact;
 
@@ -211,15 +218,27 @@ function GuestEditor(props: {
     }
   };
 
+  /**
+   * 保存。足りない項目があっても途中まで保存し（要件定義書 G-12）、画面に留まって足りない項目を示す。
+   * すべてそろっていれば一覧に戻る（同行者は完了の画面に切り替わる）
+   */
   const finish = async () => {
     setShowMissing(true);
-    if (await save()) props.onBack();
+    setNotice(null);
+    const incomplete = problems.length > 0;
+    if (!(await save())) return;
+    if (incomplete) {
+      setNotice(t.incompleteSaved);
+      requestAnimationFrame(() => editor.current?.querySelector(".missing")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+      return;
+    }
+    props.onBack();
   };
 
   const disabled = props.readOnly;
 
   return (
-    <section className="card guest-editor">
+    <section className="card guest-editor" ref={editor}>
       <h2>
         {fill(t.guestN, { n: seq })}
         {seq === 1 && `（${t.representative}）`}
@@ -228,7 +247,7 @@ function GuestEditor(props: {
       {disabled && <p className="notice">{t.locked}</p>}
 
       <fieldset disabled={disabled} className="form">
-        <div className="field">
+        <div className={`field ${bad("isJapanese") ?? ""}`}>
           <span className="label">{t.isJapanese}</span>
           <div className="segmented">
             <button type="button" className={g.isJapanese === true ? "on" : ""} onClick={() => set("isJapanese", true)}>
@@ -242,7 +261,7 @@ function GuestEditor(props: {
 
         {g.isJapanese !== null && (
           <>
-            <div className="field">
+            <div className={`field ${bad("idPhoto") ?? ""}`}>
               <span className="label">{g.isJapanese ? t.idPhotoJapanese : t.idPhotoForeign}</span>
               {g.isJapanese && <p className="note">{t.myNumberNote}</p>}
               {g.isJapanese && g.isUnder16 && <p className="note">{t.photoOptionalUnder16}</p>}
@@ -255,10 +274,10 @@ function GuestEditor(props: {
                 disabled={disabled}
                 onUploaded={(id) => set("idPhotoId", id)}
               />
-              {showMissing && missing.includes("idPhoto") && <p className="alert">{t.required}</p>}
+              {bad("idPhoto") && <p className="alert">{t.idPhotoRequired}</p>}
             </div>
 
-            <label>
+            <label className={bad("fullName")}>
               {t.fullName}
               {!g.isJapanese && <small>{t.fullNameHintForeign}</small>}
               <input value={g.fullName} onChange={(e) => set("fullName", e.target.value)} maxLength={100} autoComplete="name" />
@@ -266,11 +285,11 @@ function GuestEditor(props: {
 
             {!g.isJapanese && (
               <>
-                <label>
+                <label className={bad("nationality")}>
                   {t.nationality}
                   <CountrySelect lang={lang} value={g.nationality} placeholder={t.select} onChange={(v) => set("nationality", v)} disabled={disabled} />
                 </label>
-                <label>
+                <label className={bad("passportNumber")}>
                   {t.passportNumber}
                   <input
                     value={g.passportNumber}
@@ -301,18 +320,18 @@ function GuestEditor(props: {
             )}
             {!sameAddress && (
               <>
-                <label>
+                <label className={bad("addressCountry")}>
                   {t.addressCountry}
                   <CountrySelect lang={lang} value={g.addressCountry} placeholder={t.select} onChange={(v) => set("addressCountry", v)} disabled={disabled} />
                 </label>
-                <label>
+                <label className={bad("address")}>
                   {t.address}
                   <textarea value={g.address} onChange={(e) => set("address", e.target.value)} maxLength={300} rows={2} autoComplete="street-address" />
                 </label>
               </>
             )}
 
-            <label>
+            <label className={bad("occupation")}>
               {t.occupation}
               <input value={g.occupation} onChange={(e) => set("occupation", e.target.value)} maxLength={100} />
             </label>
@@ -328,7 +347,7 @@ function GuestEditor(props: {
               </label>
             )}
             {!sameContact && (
-              <label>
+              <label className={bad("contact")}>
                 {t.contact}
                 <input value={g.contact} onChange={(e) => set("contact", e.target.value)} maxLength={100} autoComplete="tel" />
               </label>
@@ -340,7 +359,7 @@ function GuestEditor(props: {
             </label>
 
             {isCompanion && (
-              <label className="check">
+              <label className={`check ${bad("consent") ?? ""}`}>
                 <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
                 <span>
                   {t.consentSelf}（
@@ -355,8 +374,11 @@ function GuestEditor(props: {
         )}
       </fieldset>
 
-      {showMissing && missing.length > 0 && (
-        <p className="alert">{fill(t.missing, { items: missing.map((m) => t[MISSING_KEY[m]]).join("、") })}</p>
+      {showMissing && problems.length > 0 && (
+        <div className="alert">
+          {notice && <p>{notice}</p>}
+          <p>{fill(t.missing, { items: problems.map(problemLabel).join("、") })}</p>
+        </div>
       )}
       {error && <p className="alert">{error}</p>}
 
@@ -373,7 +395,7 @@ function GuestEditor(props: {
               }}
               disabled={saving}
             >
-              {t.back}
+              {t.saveDraftBack}
             </button>
           )}
         </div>
@@ -599,6 +621,8 @@ export function RegistrationApp({ role, token }: { role: "r" | "g"; token: strin
   const [view, setView] = useState<RegistrationView | null>(null);
   const [failure, setFailure] = useState<"invalid" | "error" | null>(null);
   const [screen, setScreen] = useState<Screen>({ kind: "list" });
+  /** 同行者が、完了した後に「修正する」を押したとき */
+  const [companionEditing, setCompanionEditing] = useState(false);
   const t = GUEST_TEXT[lang];
 
   const setLang = (l: Lang) => {
@@ -690,21 +714,37 @@ export function RegistrationApp({ role, token }: { role: "r" | "g"; token: strin
         {isCompanion ? (
           <>
             <p>{fill(t.companionIntro, { name: view.property.name })}</p>
-            {own?.status === "ready" && !companionLocked && <p className="notice">{t.companionDone}</p>}
-            <GuestEditor
-              key={`g-${own?.seq}`}
-              t={t}
-              lang={lang}
-              api={api}
-              loadPhoto={loadPhoto}
-              role="companion"
-              seq={view.companionSeq ?? 2}
-              guest={own}
-              representative={undefined}
-              readOnly={companionLocked}
-              onSaved={reload}
-              onBack={() => undefined}
-            />
+            {own && own.status !== "draft" && !companionEditing ? (
+              // 入力が完了したらフォームを閉じ、完了したことが一目で分かる画面にする
+              <section className="card done-card">
+                <div className="done-icon">✓</div>
+                <p className="done-title">{t.companionDone}</p>
+                <p className="guest-name">{own.fullName}</p>
+                {!companionLocked && (
+                  <button className="button" onClick={() => setCompanionEditing(true)}>
+                    {t.editAgain}
+                  </button>
+                )}
+              </section>
+            ) : (
+              <GuestEditor
+                key={`g-${own?.seq}`}
+                t={t}
+                lang={lang}
+                api={api}
+                loadPhoto={loadPhoto}
+                role="companion"
+                seq={view.companionSeq ?? 2}
+                guest={own}
+                representative={undefined}
+                readOnly={companionLocked}
+                onSaved={reload}
+                onBack={() => {
+                  setCompanionEditing(false);
+                  window.scrollTo(0, 0);
+                }}
+              />
+            )}
           </>
         ) : (
           <>
@@ -748,7 +788,10 @@ export function RegistrationApp({ role, token }: { role: "r" | "g"; token: strin
                 representative={screen.seq > 1 ? representative : undefined}
                 readOnly={view.guests.find((g) => g.seq === screen.seq)?.status === "approved"}
                 onSaved={reload}
-                onBack={() => setScreen({ kind: "list" })}
+                onBack={() => {
+                  setScreen({ kind: "list" });
+                  window.scrollTo(0, 0);
+                }}
               />
             )}
             {screen.kind === "review" && (

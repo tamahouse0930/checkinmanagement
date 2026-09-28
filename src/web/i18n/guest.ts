@@ -2,6 +2,13 @@ import type { Lang } from "../../shared/langs";
 
 /** 宿泊者入力画面の文言（要件定義書 L-04）。{n} などは差し込み */
 const ja = {
+  idPhotoLabel: "身分証の写真",
+  idPhotoRequired: "身分証の写真を撮影してください",
+  consentLabel: "同意",
+  consentRequired: "同意にチェックしてください",
+  incompleteSaved: "途中まで保存しました。赤く表示した項目を入力してください。",
+  saveDraftBack: "途中保存して戻る",
+  editAgain: "入力内容を修正する",
   loading: "読み込み中…",
   invalidUrl: "この URL は使えません。予約サイトのメッセージで、ホストにお問い合わせください。",
   errorGeneric: "エラーが発生しました。もう一度お試しください。",
@@ -83,6 +90,13 @@ const ja = {
 type Dict = typeof ja;
 
 const en: Dict = {
+  idPhotoLabel: "ID photo",
+  idPhotoRequired: "Please take a photo of your ID",
+  consentLabel: "Consent",
+  consentRequired: "Please check the consent box",
+  incompleteSaved: "Your progress has been saved. Please fill in the items shown in red.",
+  saveDraftBack: "Save and go back",
+  editAgain: "Edit my details",
   loading: "Loading…",
   invalidUrl: "This link is no longer valid. Please contact the host through the booking site's messages.",
   errorGeneric: "Something went wrong. Please try again.",
@@ -162,6 +176,13 @@ const en: Dict = {
 };
 
 const ko: Dict = {
+  idPhotoLabel: "신분증 사진",
+  idPhotoRequired: "신분증 사진을 촬영해 주세요",
+  consentLabel: "동의",
+  consentRequired: "동의에 체크해 주세요",
+  incompleteSaved: "입력한 내용까지 저장했습니다. 빨간색으로 표시된 항목을 입력해 주세요.",
+  saveDraftBack: "임시 저장 후 돌아가기",
+  editAgain: "입력 내용 수정하기",
   loading: "불러오는 중…",
   invalidUrl: "이 URL은 사용할 수 없습니다. 예약 사이트의 메시지로 호스트에게 문의해 주세요.",
   errorGeneric: "오류가 발생했습니다. 다시 시도해 주세요.",
@@ -241,6 +262,13 @@ const ko: Dict = {
 };
 
 const zhHans: Dict = {
+  idPhotoLabel: "身份证件照片",
+  idPhotoRequired: "请拍摄身份证件照片",
+  consentLabel: "同意",
+  consentRequired: "请勾选同意",
+  incompleteSaved: "已保存填写的内容。请填写以红色标出的项目。",
+  saveDraftBack: "暂存并返回",
+  editAgain: "修改填写内容",
   loading: "加载中…",
   invalidUrl: "此链接已无法使用。请通过预订网站的消息联系房东。",
   errorGeneric: "发生错误，请重试。",
@@ -320,6 +348,13 @@ const zhHans: Dict = {
 };
 
 const zhHant: Dict = {
+  idPhotoLabel: "身分證件照片",
+  idPhotoRequired: "請拍攝身分證件照片",
+  consentLabel: "同意",
+  consentRequired: "請勾選同意",
+  incompleteSaved: "已儲存填寫的內容。請填寫以紅色標示的項目。",
+  saveDraftBack: "暫存並返回",
+  editAgain: "修改填寫內容",
   loading: "載入中…",
   invalidUrl: "此連結已無法使用。請透過訂房網站的訊息聯絡房東。",
   errorGeneric: "發生錯誤，請再試一次。",

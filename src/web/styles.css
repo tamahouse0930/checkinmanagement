@@ -784,6 +784,50 @@ label.check.inline {
   margin: 12px 0;
 }
 
+/* 保存を押したときに足りなかった項目 */
+.guest-editor .missing {
+  color: var(--danger);
+}
+
+.guest-editor .missing input,
+.guest-editor .missing select,
+.guest-editor .missing textarea,
+.guest-editor .missing .segmented button:not(.on),
+.guest-editor .missing .photo-field .button {
+  border: 2px solid var(--danger);
+  background: #fff7f6;
+}
+
+.guest-editor .alert p {
+  margin: 4px 0;
+}
+
+/* 同行者の入力完了 */
+.done-card {
+  text-align: center;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  padding: 32px 16px;
+}
+
+.done-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--ok-bg);
+  color: #2e7d4f;
+  font-size: 2.4rem;
+  display: grid;
+  place-items: center;
+}
+
+.done-title {
+  font-size: 1.15rem;
+  font-weight: bold;
+  margin: 0;
+}
+
 /* ---- 写真の照合・タブレットの登録（管理画面） ---- */
 
 .verify-grid {
