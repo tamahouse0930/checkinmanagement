@@ -425,8 +425,9 @@ function GuestList(props: {
   view: RegistrationView;
   api: ReturnType<typeof useApi>;
   reload: () => Promise<void>;
+  lang: Lang;
   onEdit: (seq: number) => void;
-  onReview: () => void;
+  onSubmitted: () => Promise<void>;
 }) {
   const { t, view, api } = props;
   const [count, setCount] = useState(view.guestTotal || 1);
@@ -529,24 +530,20 @@ function GuestList(props: {
       )}
 
       {view.guestTotal > 0 && view.regStatus !== "submitted" && (pending.length > 0 || !approved) && (
-        <div className="actions">
-          <button className="button primary" onClick={props.onReview} disabled={!allEntered}>
-            {approved ? t.submitAdditions : t.reviewAndSubmit}
-          </button>
-          {!allEntered && <p className="note">{t.needAllEntered}</p>}
-        </div>
+        <SubmitBlock t={t} lang={props.lang} view={view} api={api} ready={allEntered} onDone={props.onSubmitted} />
       )}
     </section>
   );
 }
 
-function Review(props: {
+/** 送信（同意のチェックと送信ボタンを一覧の画面にまとめる。確認画面は挟まない） */
+function SubmitBlock(props: {
   t: GuestText;
   lang: Lang;
   view: RegistrationView;
   api: ReturnType<typeof useApi>;
+  ready: boolean;
   onDone: () => Promise<void>;
-  onBack: () => void;
 }) {
   const { t, view } = props;
   const [consent, setConsent] = useState(false);
@@ -555,6 +552,9 @@ function Review(props: {
   const pending = view.guests.filter((g) => g.status !== "approved");
   const needsCompanionConsent = pending.some((g) => g.seq > 1 && g.enteredBy === "representative");
   const rules = view.houseRules[props.lang] || view.houseRules.en || view.houseRules.ja;
+  const approved = view.regStatus === "approved";
+
+  if (!props.ready) return <p className="note submit-note">{t.needAllEntered}</p>;
 
   const submit = async () => {
     setState("sending");
@@ -567,18 +567,7 @@ function Review(props: {
   };
 
   return (
-    <section className="card">
-      <h2>{t.reviewAndSubmit}</h2>
-      <ul className="guest-list">
-        {pending.map((g) => (
-          <li key={g.seq}>
-            <div>
-              <strong>{fill(t.guestN, { n: g.seq })}</strong>
-              <div className="guest-name">{g.fullName}</div>
-            </div>
-          </li>
-        ))}
-      </ul>
+    <div className="submit-block">
       {rules && (
         <details className="rules">
           <summary>{t.houseRules}</summary>
@@ -601,25 +590,20 @@ function Review(props: {
         </label>
       )}
       {state === "error" && <p className="alert">{t.errorGeneric}</p>}
-      <div className="actions">
-        <button
-          className="button primary"
-          onClick={submit}
-          disabled={!consent || (needsCompanionConsent && !consentCompanions) || state === "sending"}
-        >
-          {state === "sending" ? t.submitting : t.submit}
-        </button>
-        <button className="button" onClick={props.onBack}>
-          {t.back}
-        </button>
-      </div>
-    </section>
+      <button
+        className="button primary submit-button"
+        onClick={submit}
+        disabled={!consent || (needsCompanionConsent && !consentCompanions) || state === "sending"}
+      >
+        {state === "sending" ? t.submitting : approved ? t.submitAdditions : t.submit}
+      </button>
+    </div>
   );
 }
 
 // ---- 全体 ----
 
-type Screen = { kind: "list" } | { kind: "edit"; seq: number } | { kind: "review" };
+type Screen = { kind: "list" } | { kind: "edit"; seq: number };
 
 export function RegistrationApp({ role, token }: { role: "r" | "g"; token: string }) {
   const api = useApi(role === "r" ? "/api/r" : "/api/g", token);
@@ -777,8 +761,12 @@ export function RegistrationApp({ role, token }: { role: "r" | "g"; token: strin
                   view={view}
                   api={api}
                   reload={reload}
+                  lang={lang}
                   onEdit={(seq) => setScreen({ kind: "edit", seq })}
-                  onReview={() => setScreen({ kind: "review" })}
+                  onSubmitted={async () => {
+                    await reload();
+                    window.scrollTo(0, 0);
+                  }}
                 />
               </>
             )}
@@ -799,20 +787,6 @@ export function RegistrationApp({ role, token }: { role: "r" | "g"; token: strin
                   setScreen({ kind: "list" });
                   window.scrollTo(0, 0);
                 }}
-              />
-            )}
-            {screen.kind === "review" && (
-              <Review
-                t={t}
-                lang={lang}
-                view={view}
-                api={api}
-                onDone={async () => {
-                  await reload();
-                  setScreen({ kind: "list" });
-                  window.scrollTo(0, 0);
-                }}
-                onBack={() => setScreen({ kind: "list" })}
               />
             )}
           </>

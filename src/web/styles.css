@@ -784,6 +784,30 @@ label.check.inline {
   margin: 12px 0;
 }
 
+.submit-block {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.submit-block p {
+  margin: 0;
+}
+
+.submit-button {
+  width: 100%;
+  padding: 14px;
+  font-size: 1.05rem;
+}
+
+.submit-note {
+  border-top: 1px solid var(--line);
+  margin: 12px 0 0;
+  padding-top: 12px;
+}
+
 /* 保存を押したときに足りなかった項目 */
 .guest-editor .missing {
   color: var(--danger);
