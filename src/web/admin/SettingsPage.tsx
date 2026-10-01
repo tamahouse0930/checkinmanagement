@@ -242,7 +242,6 @@ function TextsSection() {
   return (
     <section className="card">
       <h2>文面</h2>
-      <p className="note">案内文は予約詳細でコピーして使います。ハウスルールはゲストの同意画面に、連絡方法はタブレットに表示します。</p>
       <div className="form">
         <div className="row">
           <label>
@@ -322,10 +321,6 @@ export function DevicesSection({ onChanged }: { onChanged?: () => void }) {
   return (
     <section className="card">
       <h2>チェックイン用タブレットの登録</h2>
-      <p className="note">
-        玄関に置いて、ゲストがチェックイン・チェックアウトに使うタブレットを、このシステムに登録（紐付け）します。
-        登録したタブレットだけが、チェックイン・チェックアウトの画面を使えます。
-      </p>
       <h3 className="sub-heading">登録済みのタブレット</h3>
       <ul className="list">
         {rows.map((d) => (
@@ -342,7 +337,6 @@ export function DevicesSection({ onChanged }: { onChanged?: () => void }) {
         {rows.length === 0 && <li className="note">まだ登録されていません</li>}
       </ul>
       <h3 className="sub-heading">新しいタブレットを登録する</h3>
-      <p className="note">タブレットの名前（管理用。例: 玄関の iPad）を入れて「登録用のコードを発行」を押し、表示されたコードをタブレットで入力します。</p>
       <div className="form">
         <label>
           タブレットの名前（管理用）

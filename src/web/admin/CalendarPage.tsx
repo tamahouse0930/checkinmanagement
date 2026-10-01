@@ -226,9 +226,6 @@ export function CalendarPage() {
           テスト
         </span>
       </div>
-      <p className="note">
-        日付を押すと、その日からの宿泊を登録できます。帯は宿泊する夜（チェックイン日〜チェックアウト日の前日）に表示しています。
-      </p>
     </div>
   );
 }

@@ -72,12 +72,10 @@ function AccountsPage() {
     <div className="stack">
       <EmailListSection
         title="施設管理者"
-        description="施設の管理画面（予約・名簿・写真・設定）にログインできる Google アカウントです。「案内メールを送る」で、管理画面の URL とログインの方法をその人に知らせます（施設が Google と連携している必要があります）。最後の 1 人は削除できません。"
         endpoint="/api/system/accounts"
         listKey="accounts"
         invite
       />
-      <p className="note">システム管理者の追加は、開発者がコマンド（npm run admin:add -- --remote --system）で行います。</p>
     </div>
   );
 }
@@ -109,7 +107,6 @@ function AuditLogPage() {
   return (
     <section className="card">
       <h2>操作ログ</h2>
-      <p className="note">誰が・いつ・何をしたかの記録です。宿泊者の氏名などは記録していません（対象は ID・件数で表示します）。</p>
       {error && <p className="alert">{error}</p>}
       <div className="table-wrap">
         <table className="stay-table">

@@ -154,7 +154,6 @@ export function LedgerPage() {
     <div className="stack">
       <section className="card">
         <h2>名簿管理</h2>
-        <p className="note">期間を指定して検索すると、その期間の宿泊が一覧で表示されます。日付を押すと、その宿泊の名簿と写真を表示します。</p>
         <form
           className="form ledger-search"
           onSubmit={(e) => {

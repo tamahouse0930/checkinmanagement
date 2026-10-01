@@ -32,7 +32,7 @@ export function Message({ message }: { message: { kind: "ok" | "error"; text: st
 
 export function EmailListSection(props: {
   title: string;
-  description: string;
+  description?: string;
   endpoint: string;
   listKey: string;
   onChanged?: () => void;
@@ -88,7 +88,7 @@ export function EmailListSection(props: {
   return (
     <section className="card">
       <h2>{props.title}</h2>
-      <p className="note">{props.description}</p>
+      {props.description && <p className="note">{props.description}</p>}
       <ul className="list">
         {rows.map((r) => (
           <li key={r.email}>
