@@ -579,7 +579,7 @@ export function ReservationPage({ id }: { id: string }) {
           <MessageBlock
             title="URL の案内文"
             texts={r.messages.invite}
-            defaultLang="en"
+            defaultLang="ja"
             sentAt={r.inviteSentAt}
             markPath={`/api/admin/reservations/${id}/invite-sent`}
             onChanged={load}
