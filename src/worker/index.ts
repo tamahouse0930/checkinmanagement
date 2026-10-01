@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv, Env } from "./env";
 import { Db } from "./lib/db";
+import { rateLimit } from "./middleware/rate-limit";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
 import { kioskRoutes } from "./routes/kiosk";
@@ -34,7 +35,15 @@ app.use("*", async (c, next) => {
   c.header("X-Content-Type-Options", "nosniff");
   c.header("Referrer-Policy", "no-referrer");
   c.header("Cache-Control", "no-store");
+  // API の応答は画面として表示されることがないため、何も読み込ませない
+  c.header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
 });
+
+// 回数制限。管理画面の API はログインが必要なため対象にしない（設計書 7.2）
+app.use("/api/kiosk/pair", rateLimit("PAIR_LIMITER"));
+for (const path of ["/auth/*", "/api/public/*", "/api/r/*", "/api/g/*", "/api/kiosk/*"]) {
+  app.use(path, rateLimit("PUBLIC_LIMITER"));
+}
 
 app.route("/auth/google", authRoutes);
 app.route("/api/admin", adminRoutes);

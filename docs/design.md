@@ -928,6 +928,8 @@ Workers の無料プランでは、1 回の処理で外部へのリクエスト�
 | Google アカウント | 認可は `gmail.send` と `drive.file` だけにする。管理者の Google アカウントに 2 段階認証を設定する |
 | アップロード | 1 枚 3 MB まで。JPEG・PNG・WebP のみ（先頭のバイト列で判定） |
 | レスポンスヘッダー | `Content-Security-Policy`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: no-referrer`（URL のトークンを外部に漏らさない） |
+| Content-Security-Policy | 画面は自分のドメインのスクリプト・スタイル・通信だけを許す（写真のプレビュー用に `blob:` の画像を許す）。開発サーバーはインラインのスクリプトを使うため、本番のビルドの HTML に `<meta>` で埋め込む（`vite.config.ts`）。他のサイトの中に表示させないよう、`frame-ancestors 'none'` を `public/_headers` で付ける。API の応答には `default-src 'none'` を付ける |
+| 回数制限 | ログインしていない人も呼べる API（`/auth`・`/api/public`・`/api/r`・`/api/g`・`/api/kiosk`）は、接続元の IP ごとに 1 分 120 回まで。タブレットの端末登録（8 桁のコード）は 1 分 5 回まで。超えたら 429 を返し、D1 を読まない（Workers の Rate Limiting。`wrangler.jsonc` の `ratelimits`）。総当たりと、無料枠を他人に使い切られるのを防ぐ。ただし制限で断ったリクエストも Workers の 1 日の回数には数えられるため、独自ドメインに移したら Cloudflare の WAF の回数制限も併用する |
 | 秘密情報 | OAuth クライアントの秘密鍵、Cookie の署名鍵、リフレッシュトークンの暗号化鍵は、最初のデプロイ時に開発者が Workers のシークレットに登録し、リポジトリに置かない。リフレッシュトークンは暗号化して D1 に保存する |
 | ログ | Workers のログに個人情報やトークンを出力しない |
 

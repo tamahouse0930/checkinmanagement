@@ -13,6 +13,10 @@ export interface Env {
   GOOGLE_CLIENT_SECRET: string;
   SESSION_SECRET: string;
   TOKEN_ENC_KEY: string;
+  /** 回数制限（wrangler.jsonc の ratelimits）。ログインしていない人も呼べる API 全体 */
+  PUBLIC_LIMITER?: RateLimit;
+  /** 回数制限。タブレットの端末登録（8 桁のコードの総当たり対策） */
+  PAIR_LIMITER?: RateLimit;
 }
 
 export type AppEnv = {
