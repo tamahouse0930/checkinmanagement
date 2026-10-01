@@ -10,7 +10,6 @@ import "./styles.css";
 function Placeholder({ title }: { title: string }) {
   return (
     <main className="placeholder">
-      <h1>TAMAHOUSE</h1>
       <p>{title}は準備中です。</p>
     </main>
   );

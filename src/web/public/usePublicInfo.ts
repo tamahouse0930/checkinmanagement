@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { useDocumentTitle } from "../lib/title";
 
 export interface PublicInfo {
   name: string;
@@ -12,7 +13,8 @@ export function usePublicInfo(): PublicInfo | null {
   useEffect(() => {
     api<PublicInfo>("/api/public/info")
       .then(setInfo)
-      .catch(() => setInfo({ name: "TAMAHOUSE", operatorName: "", operatorContact: "" }));
+      .catch(() => setInfo({ name: "", operatorName: "", operatorContact: "" }));
   }, []);
+  useDocumentTitle(info?.name);
   return info;
 }

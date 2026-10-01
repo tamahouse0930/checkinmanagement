@@ -4,6 +4,7 @@ import { addDays, addMonths, diffDays, monthRange, weekdayOf } from "../../share
 import { ATTENTION_KEYS, ATTENTION_LABEL, CHANNEL_LABEL, PROGRESS_LABEL, type ProgressKey } from "../../shared/progress";
 import { api } from "../lib/api";
 import { navigate } from "../lib/router";
+import { setupLabel } from "../../shared/setup";
 
 const WEEK_HEAD = ["月", "火", "水", "木", "金", "土", "日"];
 const CHANNEL_SHORT = { airbnb: "Airbnb", booking: "Booking", other: "" } as const;
@@ -120,6 +121,16 @@ export function CalendarPage() {
 
   return (
     <div className="stack">
+      {data.setupPending.length > 0 && (
+        <div className="alert setup-alert">
+          <p>
+            初期設定が済んでいません（残り: {data.setupPending.map(setupLabel).join("、")}）
+          </p>
+          <button className="button primary" onClick={() => navigate("/admin/setup")}>
+            初期設定を開く
+          </button>
+        </div>
+      )}
       {data.alerts.map((a) => (
         <p key={a} className="alert">
           {a}

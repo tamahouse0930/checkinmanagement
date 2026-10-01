@@ -1,5 +1,5 @@
 {
-  "name": "TAMAHOUSE Check-in",
+  "name": "Check-in",
   "short_name": "Check-in",
   "start_url": "/kiosk",
   "scope": "/kiosk",

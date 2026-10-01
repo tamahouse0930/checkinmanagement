@@ -1513,3 +1513,57 @@ label.check.inline {
   border-radius: 8px;
   padding: 8px 12px;
 }
+
+/* 初期設定（設計書 4.14） */
+.setup-progress {
+  margin: 12px 0 0;
+  padding-left: 1.5em;
+}
+
+.setup-progress li {
+  padding: 4px 0;
+}
+
+.setup-progress li span {
+  margin-left: 8px;
+  color: var(--muted);
+}
+
+.setup-progress li.done span {
+  color: var(--primary);
+  font-weight: bold;
+}
+
+.setup-step-label {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.setup-step-label span {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+.setup-done {
+  background: var(--ok-bg);
+  color: var(--primary);
+}
+
+.setup-todo {
+  background: var(--alert-bg);
+  color: var(--danger);
+}
+
+.setup-alert p {
+  margin: 0 0 8px;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+}

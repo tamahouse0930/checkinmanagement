@@ -8,12 +8,14 @@ import { getSettings, invalidateSettings, parseRevoked, PROPERTY_ID, type Revoke
 import { nowIso } from "../lib/time";
 import { requireAdmin } from "../middleware/admin";
 import { sendMail } from "../services/google/gmail";
+import { loadSetupStatus } from "../services/setup";
 import { forgetDevice } from "./kiosk";
 import { adminGuestRoutes } from "./admin-guests";
 import { ledgerRoutes } from "./ledger";
 import { reservationRoutes } from "./reservations";
 import { LANGS } from "../../shared/langs";
 import { DEFAULT_TEXTS, TEXT_KINDS, type TextKind } from "../../shared/templates";
+import { setupLabel } from "../../shared/setup";
 
 export const adminRoutes = new Hono<AppEnv>();
 adminRoutes.use("*", requireAdmin);
@@ -40,8 +42,9 @@ function revokeStatement(c: { var: AppEnv["Variables"] }, current: string, add: 
     .bind(JSON.stringify(list), nowIso(), PROPERTY_ID);
 }
 
-adminRoutes.get("/me", (c) => {
-  return c.json({ email: c.var.admin.email, serviceEmail: c.env.GOOGLE_SERVICE_EMAIL });
+adminRoutes.get("/me", async (c) => {
+  const { property } = await getSettings(c.var.db);
+  return c.json({ email: c.var.admin.email, serviceEmail: c.env.GOOGLE_SERVICE_EMAIL, propertyName: property.name });
 });
 
 adminRoutes.post("/logout", async (c) => {
@@ -125,6 +128,44 @@ adminRoutes.delete("/accounts/:email", async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * 初期設定の案内メール（設計書 4.14）。ログインできるアカウントに登録した人へ、管理画面の URL と
+ * ログインに使う Google アカウント、まだ済んでいない初期設定の項目を知らせる
+ */
+adminRoutes.post("/accounts/:email/invite", async (c) => {
+  const email = c.req.param("email").toLowerCase();
+  const db = c.var.db;
+  const { settings, status } = await loadSetupStatus(db);
+  if (!settings.adminEmails.has(email)) return c.json({ error: { code: "not_found", message: "アカウントが見つかりません" } }, 404);
+  if (!settings.googleLink) return c.json(badRequest("Google と連携してから送ってください（メールは連携したアカウントから送ります）"), 400);
+
+  const { pending } = status;
+  const name = settings.property.name;
+  const url = `${new URL(c.req.url).origin}/admin/setup`;
+  try {
+    await sendMail(c.env, db, {
+      to: [email],
+      subject: `[${name}] 管理画面へのご案内（初期設定）`,
+      text: [
+        `${c.var.admin.email} さんが、${name} のチェックイン管理システムの管理者として、あなたを登録しました。`,
+        "",
+        "次の URL を開き、「Google でログイン」から、このメールを受け取った Google アカウントでログインしてください。",
+        `ログインに使うアカウント: ${email}`,
+        url,
+        "",
+        "ログインすると初期設定の画面が開きます。上から順に確認・設定してください。",
+        pending.length > 0 ? `まだ済んでいない項目: ${pending.map(setupLabel).join("、")}` : "必要な初期設定はすべて済んでいます。",
+        "",
+        "心当たりがない場合は、このメールを破棄してください。",
+      ].join("\n"),
+    });
+  } catch (error) {
+    return c.json({ error: { code: "mail_failed", message: String(error instanceof Error ? error.message : error) } }, 502);
+  }
+  c.executionCtx.waitUntil(db.run(auditStatement(db, `admin:${c.var.admin.email}`, "send_admin_invite", email)));
+  return c.json({ ok: true });
+});
+
 // ---- 通知メールの宛先 ----
 
 adminRoutes.get("/recipients", async (c) => {
@@ -154,6 +195,11 @@ adminRoutes.delete("/recipients/:email", async (c) => {
 });
 
 // ---- 設定 ----
+
+/** 初期設定の各項目が済んでいるか（設計書 4.14） */
+adminRoutes.get("/setup", async (c) => {
+  return c.json((await loadSetupStatus(c.var.db)).status);
+});
 
 adminRoutes.get("/settings", async (c) => {
   const { property, googleLink } = await getSettings(c.var.db);
@@ -326,12 +372,12 @@ adminRoutes.delete("/ical-sources/:id", async (c) => {
 /** 連携の確認用: 登録した宛先にテストメールを送る */
 adminRoutes.post("/google/test-mail", async (c) => {
   const db = c.var.db;
-  const { recipients } = await getSettings(db);
+  const { recipients, property } = await getSettings(db);
   if (recipients.length === 0) return c.json(badRequest("通知メールの宛先を登録してください"), 400);
   try {
     await sendMail(c.env, db, {
       to: recipients,
-      subject: "[テスト] [TAMAHOUSE] 通知メールのテスト",
+      subject: `[テスト] [${property.name}] 通知メールのテスト`,
       text: `管理画面から送信したテストメールです。\n送信者: ${c.var.admin.email}`,
     });
   } catch (error) {

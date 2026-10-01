@@ -25,7 +25,7 @@ export interface SourceResult {
 
 async function fetchIcal(url: string): Promise<string> {
   const res = await fetch(url, {
-    headers: { "User-Agent": "TAMAHOUSE-checkin/1.0" },
+    headers: { "User-Agent": "checkin-management/1.0" },
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);

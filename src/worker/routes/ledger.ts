@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { isValidDate } from "../../shared/dates";
 import type { AppEnv } from "../env";
 import { auditStatement } from "../lib/audit";
+import { getSettings } from "../lib/settings";
 
 /** 名簿管理（要件定義書 H-33、設計書 4.13）と名簿の CSV 出力（要件定義書 H-30） */
 export const ledgerRoutes = new Hono<AppEnv>();
@@ -245,7 +246,8 @@ ledgerRoutes.get("/register", async (c) => {
   c.executionCtx.waitUntil(
     db.run(auditStatement(db, `admin:${c.var.admin.email}`, "view_register", `${period.from}〜${period.to}（${rows.length}人）`)),
   );
-  return c.json({ from: period.from, to: period.to, stayedOnly, guestCount: rows.length, stays });
+  const { property } = await getSettings(db);
+  return c.json({ propertyName: property.name, from: period.from, to: period.to, stayedOnly, guestCount: rows.length, stays });
 });
 
 interface RegistryRow {
@@ -355,11 +357,14 @@ ledgerRoutes.get("/registry.csv", async (c) => {
     db.run(auditStatement(db, `admin:${c.var.admin.email}`, "export_csv", `${period.from}〜${period.to}（${rows.length}人）`)),
   );
   const body = `﻿${lines.join("\r\n")}\r\n`;
-  const fileName = `tamahouse-guests_${period.from}_${period.to}.csv`;
+  const { property } = await getSettings(db);
+  // 施設名を含む名前は filename* で送り、対応していないブラウザには英数字だけの名前を使ってもらう
+  const fileName = `guests_${period.from}_${period.to}.csv`;
+  const localName = encodeURIComponent(`${property.name}_宿泊者名簿_${period.from}_${period.to}.csv`);
   return new Response(body, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${fileName}"`,
+      "Content-Disposition": `attachment; filename="${fileName}"; filename*=UTF-8''${localName}`,
       "Cache-Control": "private, no-store",
     },
   });

@@ -3,7 +3,7 @@ import { usePublicInfo } from "./usePublicInfo";
 /** ホームページ（Google の OAuth 同意画面に登録する公開ページ） */
 export function HomePage() {
   const info = usePublicInfo();
-  const name = info?.name ?? "TAMAHOUSE";
+  const name = info?.name ?? "";
   return (
     <main className="doc">
       <h1>{name}</h1>

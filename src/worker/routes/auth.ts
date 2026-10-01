@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { safeAdminPath } from "../../shared/setup";
 import type { AppEnv } from "../env";
 import { auditStatement } from "../lib/audit";
 import { base64UrlDecode, base64UrlEncode, encryptText, randomToken, signValue, utf8Decode, utf8Encode, verifySignedValue } from "../lib/crypto";
@@ -26,6 +27,8 @@ interface OAuthState {
   state: string;
   nonce: string;
   verifier: string;
+  /** ログイン後に戻る管理画面のパス（案内メールの URL から来た場合など） */
+  next?: string;
 }
 
 const STATE_COOKIE = "th_oauth";
@@ -36,7 +39,8 @@ function redirectUri(c: Context<AppEnv>): string {
 
 async function startFlow(c: Context<AppEnv>, mode: Mode): Promise<Response> {
   const pkce = await createPkce();
-  const flow: OAuthState = { mode, state: randomToken(), nonce: randomToken(), verifier: pkce.verifier };
+  const next = mode === "login" ? safeAdminPath(c.req.query("next")) : null;
+  const flow: OAuthState = { mode, state: randomToken(), nonce: randomToken(), verifier: pkce.verifier, ...(next ? { next } : {}) };
   const signed = await signValue(c.env.SESSION_SECRET, base64UrlEncode(utf8Encode(JSON.stringify(flow))));
   // Google から戻ってくるときはサイトをまたぐ移動になるため SameSite=Lax にする
   setCookie(c, STATE_COOKIE, signed, { httpOnly: true, secure: true, sameSite: "Lax", path: "/auth", maxAge: 600 });
@@ -84,7 +88,7 @@ authRoutes.get("/callback", async (c) => {
   if (!flow || c.req.query("state") !== flow.state) {
     return adminRedirect(c, "/admin", "ログインの有効期限が切れました。もう一度お試しください");
   }
-  const back = flow.mode === "login" ? "/admin" : "/admin/settings";
+  const back = flow.mode === "login" ? "/admin" : "/admin/setup";
   const code = c.req.query("code");
   if (!code) return adminRedirect(c, back, "Google での許可が取り消されました");
 
@@ -130,7 +134,7 @@ authRoutes.get("/callback", async (c) => {
         ].join("\n"),
       }),
     );
-    return c.redirect("/admin");
+    return c.redirect(safeAdminPath(flow.next) ?? "/admin");
   }
 
   // 連携: ログイン中の管理者が、tamahouse0930@gmail.com で許可した場合だけ受け付ける

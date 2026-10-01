@@ -21,6 +21,7 @@ import { getSettings, getText, PROPERTY_ID } from "../lib/settings";
 import { nowIso } from "../lib/time";
 import { deleteFile, downloadFile } from "../services/google/drive";
 import { countersStatement, type GuestRow, type ReservationRow, toView } from "../services/guests";
+import { deviceCountStatement, setupStatus } from "../services/setup";
 import { syncAll } from "../services/sync";
 import { isLang, LANGS, type Lang } from "../../shared/langs";
 import { renderTemplate } from "../../shared/templates";
@@ -145,7 +146,7 @@ reservationRoutes.get("/calendar", async (c) => {
   const today = jstNow().date;
   const db = c.var.db;
 
-  const [monthRows, upcomingRows, sources] = await db.batch([
+  const [monthRows, upcomingRows, sources, devices] = await db.batch([
     db
       .prepare(
         `SELECT ${SUMMARY_COLUMNS} FROM reservations
@@ -161,9 +162,11 @@ reservationRoutes.get("/calendar", async (c) => {
       )
       .bind(addDays(today, -7)),
     db.prepare("SELECT channel, last_error FROM ical_sources LIMIT 10"),
+    deviceCountStatement(db),
   ]);
 
-  const { googleLink, property } = await getSettings(db);
+  const settings = await getSettings(db);
+  const { googleLink, property } = settings;
   const now = jstNow();
   const nowTime = `${String(now.hour).padStart(2, "0")}:${String(now.minute).padStart(2, "0")}`;
   const attention = Object.fromEntries(ATTENTION_KEYS.map((k) => [k, 0])) as Record<AttentionKey, number>;
@@ -175,8 +178,8 @@ reservationRoutes.get("/calendar", async (c) => {
   for (const s of sources.results as { channel: Channel; last_error: string | null }[]) {
     if (s.last_error) alerts.push(`${s.channel === "airbnb" ? "Airbnb" : "Booking.com"} の取り込み: ${s.last_error}`);
   }
-  if (!googleLink) alerts.push("Google ドライブ・Gmail と連携されていません（設定画面から連携してください）");
-  else if (googleLink.last_error) alerts.push(googleLink.last_error);
+  // 連携していないことは、初期設定の案内（setupPending）で知らせる
+  if (googleLink?.last_error) alerts.push(googleLink.last_error);
   if (property.missing_photo_count > 0) {
     alerts.push(`Google ドライブで見つからない写真が ${property.missing_photo_count} 件あります（名簿管理で確認してください）`);
   }
@@ -187,6 +190,7 @@ reservationRoutes.get("/calendar", async (c) => {
     reservations: (monthRows.results as SummaryRow[]).map(toSummary),
     attention,
     alerts,
+    setupPending: setupStatus(settings, sources.results.length, (devices.results[0] as { n: number }).n).pending,
   };
   return c.json(body);
 });

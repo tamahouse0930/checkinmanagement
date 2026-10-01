@@ -7,6 +7,7 @@ import { fill, GUEST_TEXT, type GuestText } from "../i18n/guest";
 import { CountrySelect } from "./CountrySelect";
 import { alpha3ToAlpha2, type MrzResult } from "../../shared/mrz";
 import { resizeImage } from "./photo";
+import { useDocumentTitle } from "../lib/title";
 
 /** 宿泊者入力画面（代表者 /r/:token、同行者 /g/:token。設計書 4.3） */
 
@@ -690,10 +691,11 @@ export function RegistrationApp({ role, token }: { role: "r" | "g"; token: strin
   }, [lang]);
 
   const representative = useMemo(() => view?.guests.find((g) => g.seq === 1), [view]);
+  useDocumentTitle(view?.property.name);
 
   const header = (
     <header className="reg-header">
-      <strong>{view?.property.name ?? "TAMAHOUSE"}</strong>
+      <strong>{view?.property.name}</strong>
       <select value={lang} onChange={(e) => setLang(e.target.value as Lang)} aria-label="Language">
         {LANGS.map((l) => (
           <option key={l} value={l}>

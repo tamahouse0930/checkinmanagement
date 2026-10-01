@@ -24,6 +24,16 @@ export interface CalendarResponse {
   reservations: ReservationSummary[];
   attention: Record<AttentionKey, number>;
   alerts: string[];
+  /** 初期設定で済んでいない項目（空なら完了） */
+  setupPending: SetupStepKey[];
+}
+
+/** 初期設定の項目（設計書 4.14）。accounts（管理者の追加）は任意 */
+export type SetupStepKey = "basic" | "recipients" | "google" | "ical" | "devices" | "accounts";
+
+export interface SetupStatus {
+  steps: Record<SetupStepKey, boolean>;
+  pending: SetupStepKey[];
 }
 
 export interface ReservationDetail extends ReservationSummary {

@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api";
 import { navigate, usePathname } from "../lib/router";
+import { useDocumentTitle } from "../lib/title";
+import { usePublicInfo } from "../public/usePublicInfo";
 import { CalendarPage } from "./CalendarPage";
 import { LedgerPage, LedgerStayPage } from "./LedgerPage";
 import { RegisterPrintPage } from "./RegisterPrintPage";
 import { ReservationForm } from "./ReservationForm";
 import { ReservationPage } from "./ReservationPage";
 import { SettingsPage } from "./SettingsPage";
+import { SetupPage } from "./SetupPage";
 
 interface Me {
   email: string;
   serviceEmail: string;
+  propertyName: string;
 }
 
 const NAV = [
@@ -19,8 +23,16 @@ const NAV = [
   { path: "/admin/settings", label: "設定" },
 ];
 
-function AdminRoute({ pathname, me }: { pathname: string; me: Me }) {
+/** 初期設定は設定の一部として扱う */
+function isActive(path: string, pathname: string): boolean {
+  if (path === "/admin") return pathname === "/admin" || pathname.startsWith("/admin/reservations");
+  if (path === "/admin/settings" && pathname === "/admin/setup") return true;
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
+
+function AdminRoute({ pathname, me, onPropertySaved }: { pathname: string; me: Me; onPropertySaved: () => void }) {
   if (pathname === "/admin/settings") return <SettingsPage me={me} />;
+  if (pathname === "/admin/setup") return <SetupPage onPropertySaved={onPropertySaved} />;
   if (pathname === "/admin/photos") return <LedgerPage />;
   if (pathname === "/admin/photos/print") return <RegisterPrintPage />;
   const stay = /^\/admin\/photos\/([^/]+)$/.exec(pathname);
@@ -39,11 +51,15 @@ function urlError(): string | null {
 
 function LoginScreen() {
   const error = urlError();
+  const info = usePublicInfo();
   return (
     <main className="login">
-      <h1>TAMAHOUSE 管理画面</h1>
+      <h1>{info?.name} 管理画面</h1>
       {error && <p className="alert">{error}</p>}
-      <a className="button primary" href="/auth/google/login">
+      <a
+        className="button primary"
+        href={location.pathname === "/admin" ? "/auth/google/login" : `/auth/google/login?next=${encodeURIComponent(location.pathname)}`}
+      >
         Google でログイン
       </a>
       <p className="note">登録済みの Google アカウントでログインしてください。</p>
@@ -56,14 +72,17 @@ export function AdminApp() {
   const [me, setMe] = useState<Me | null>(null);
   const [state, setState] = useState<"loading" | "login" | "ready" | "error">("loading");
 
-  useEffect(() => {
+  const loadMe = () =>
     api<Me>("/api/admin/me")
       .then((m) => {
         setMe(m);
         setState("ready");
       })
       .catch((e: unknown) => setState(e instanceof ApiError && e.status === 401 ? "login" : "error"));
+  useEffect(() => {
+    loadMe();
   }, []);
+  useDocumentTitle(me?.propertyName);
 
   if (state === "loading") return <main className="center">読み込み中…</main>;
   if (state === "login") return <LoginScreen />;
@@ -77,14 +96,14 @@ export function AdminApp() {
   return (
     <div className="admin">
       <header className="admin-header">
-        <strong>TAMAHOUSE</strong>
+        <strong>{me.propertyName}</strong>
         <nav>
           {NAV.map((item) => (
             <a
               key={item.path}
               href={item.path}
               className={
-                (item.path === "/admin" ? pathname === "/admin" || pathname.startsWith("/admin/reservations") : pathname === item.path || pathname.startsWith(`${item.path}/`))
+                isActive(item.path, pathname)
                   ? "active"
                   : undefined
               }
@@ -102,7 +121,7 @@ export function AdminApp() {
         </button>
       </header>
       <main className="admin-main" key={pathname + location.search}>
-        <AdminRoute pathname={pathname} me={me} />
+        <AdminRoute pathname={pathname} me={me} onPropertySaved={loadMe} />
       </main>
     </div>
   );

@@ -25,6 +25,7 @@ interface RegisterGuest {
 }
 
 interface RegisterData {
+  propertyName: string;
   from: string;
   to: string;
   stayedOnly: boolean;
@@ -105,7 +106,7 @@ export function RegisterPrintPage() {
           <header>
             <h1>宿泊者名簿</h1>
             <p>
-              施設: TAMAHOUSE ／ 期間: {formatDateJa(data.from)} 〜 {formatDateJa(data.to)}（宿泊日が重なる予約）／{" "}
+              施設: {data.propertyName} ／ 期間: {formatDateJa(data.from)} 〜 {formatDateJa(data.to)}（宿泊日が重なる予約）／{" "}
               {data.stayedOnly ? "チェックインした宿泊者" : "登録された宿泊者（未チェックインを含む）"} {data.guestCount}人
             </p>
             <p>出力日時: {formatTime(new Date().toISOString())}</p>

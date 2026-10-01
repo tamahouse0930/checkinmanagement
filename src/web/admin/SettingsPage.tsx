@@ -2,8 +2,9 @@ import { useEffect, useState, type FormEvent } from "react";
 import { LANG_NAME, LANGS, type Lang } from "../../shared/langs";
 import { TEXT_KIND_LABEL, TEXT_KINDS, TEXT_PLACEHOLDERS, type TextKind } from "../../shared/templates";
 import { api } from "../lib/api";
+import { navigate } from "../lib/router";
 
-interface SettingsResponse {
+export interface SettingsResponse {
   property: {
     name: string;
     checkinTime: string;
@@ -56,7 +57,7 @@ function Message({ message }: { message: { kind: "ok" | "error"; text: string } 
   return <p className={message.kind === "ok" ? "notice" : "alert"}>{message.text}</p>;
 }
 
-function BasicSection({ initial, onSaved }: { initial: SettingsResponse["property"]; onSaved: () => void }) {
+export function BasicSection({ initial, onSaved }: { initial: SettingsResponse["property"]; onSaved: () => void }) {
   const [form, setForm] = useState(initial);
   const { message, run } = useMessage();
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [key]: e.target.value });
@@ -104,32 +105,58 @@ function BasicSection({ initial, onSaved }: { initial: SettingsResponse["propert
   );
 }
 
-function EmailListSection(props: { title: string; description: string; endpoint: string; listKey: string }) {
+export function EmailListSection(props: {
+  title: string;
+  description: string;
+  endpoint: string;
+  listKey: string;
+  onChanged?: () => void;
+  /** 各行に「案内メールを送る」を出す（ログインできるアカウント。設計書 4.14） */
+  invite?: boolean;
+}) {
   const [rows, setRows] = useState<EmailRow[]>([]);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const { message, run } = useMessage();
 
   const load = () => api<Record<string, EmailRow[]>>(props.endpoint).then((r) => setRows(r[props.listKey]));
+  const reload = async () => {
+    await load();
+    props.onChanged?.();
+  };
   useEffect(() => {
     load();
   }, []);
 
+  const sendInvite = (target: string) =>
+    api(`${props.endpoint}/${encodeURIComponent(target)}/invite`, { method: "POST" });
+
   const add = (e: FormEvent) => {
     e.preventDefault();
-    run(async () => {
-      await api(props.endpoint, { method: "POST", body: { email, name } });
-      setEmail("");
-      setName("");
-      await load();
-    }, "追加しました");
+    const target = email.trim();
+    const withInvite = props.invite === true && confirm(`${target} に、管理画面の URL とログインの方法を書いた案内メールも送りますか？`);
+    run(
+      async () => {
+        await api(props.endpoint, { method: "POST", body: { email, name } });
+        setEmail("");
+        setName("");
+        await reload();
+        if (withInvite) await sendInvite(target);
+      },
+      withInvite ? "追加して、案内メールを送りました" : "追加しました",
+    );
+  };
+
+  const invite = (target: string) => {
+    if (!confirm(`${target} に、管理画面の URL とログインの方法を書いた案内メールを送りますか？`)) return;
+    run(() => sendInvite(target), `${target} に案内メールを送りました`);
   };
 
   const remove = (target: string) => {
     if (!confirm(`${target} を削除しますか？`)) return;
     run(async () => {
       await api(`${props.endpoint}/${encodeURIComponent(target)}`, { method: "DELETE" });
-      await load();
+      await reload();
     }, "削除しました");
   };
 
@@ -144,9 +171,16 @@ function EmailListSection(props: { title: string; description: string; endpoint:
               {r.email}
               {r.name && <small>（{r.name}）</small>}
             </span>
-            <button className="link danger" onClick={() => remove(r.email)}>
-              削除
-            </button>
+            <span className="row-actions">
+              {props.invite && (
+                <button className="link" onClick={() => invite(r.email)}>
+                  案内メールを送る
+                </button>
+              )}
+              <button className="link danger" onClick={() => remove(r.email)}>
+                削除
+              </button>
+            </span>
           </li>
         ))}
         {rows.length === 0 && <li className="note">登録されていません</li>}
@@ -163,7 +197,7 @@ function EmailListSection(props: { title: string; description: string; endpoint:
   );
 }
 
-function GoogleSection({ google }: { google: SettingsResponse["google"] }) {
+export function GoogleSection({ google }: { google: SettingsResponse["google"] }) {
   const { message, run } = useMessage();
   const params = new URLSearchParams(location.search);
   const linkedNow = params.get("linked") === "1";
@@ -186,7 +220,7 @@ function GoogleSection({ google }: { google: SettingsResponse["google"] }) {
         <dt>連携した日時</dt>
         <dd>{formatDate(google.linkedAt)}</dd>
         <dt>写真の保存先フォルダ</dt>
-        <dd>{google.driveFolderReady ? "作成済み（TAMAHOUSE宿泊者写真）" : "未作成"}</dd>
+        <dd>{google.driveFolderReady ? "作成済み" : "未作成"}</dd>
       </dl>
       {google.lastError && <p className="alert">{google.lastError}</p>}
       <div className="actions">
@@ -227,7 +261,7 @@ function maskUrl(url: string): string {
   }
 }
 
-function IcalSection() {
+export function IcalSection({ onChanged }: { onChanged?: () => void }) {
   const [rows, setRows] = useState<IcalSourceRow[]>([]);
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const { message, run } = useMessage();
@@ -243,6 +277,7 @@ function IcalSection() {
       else await api("/api/admin/ical-sources", { method: "POST", body: { channel, url } });
       setInputs({ ...inputs, [channel]: "" });
       await load();
+      onChanged?.();
     }, "保存しました。カレンダーの「最新化」で取り込めます");
   };
 
@@ -385,7 +420,7 @@ interface DeviceRow {
 }
 
 /** チェックイン用タブレットの登録・取り消しとテスト（要件定義書 T-10、H-32） */
-function DevicesSection() {
+export function DevicesSection({ onChanged }: { onChanged?: () => void }) {
   const [rows, setRows] = useState<DeviceRow[]>([]);
   const [name, setName] = useState("チェックイン用タブレット");
   const [pairing, setPairing] = useState<{ code: string; expiresAt: string } | null>(null);
@@ -405,6 +440,7 @@ function DevicesSection() {
     run(async () => {
       await api(`/api/admin/devices/${d.id}`, { method: "DELETE" });
       await load();
+      onChanged?.();
     }, "登録を取り消しました");
   };
 
@@ -444,6 +480,15 @@ function DevicesSection() {
             タブレットで <strong>{location.origin}/kiosk</strong> を開き、次のコードを入力してください（{formatDate(pairing.expiresAt)} まで有効）。
           </p>
           <p className="pairing-code">{pairing.code}</p>
+          <button
+            className="button"
+            onClick={async () => {
+              await load();
+              onChanged?.();
+            }}
+          >
+            タブレットで入力したら押してください（一覧を更新）
+          </button>
         </div>
       )}
       <div className="actions">
@@ -500,34 +545,30 @@ function SessionsSection() {
   );
 }
 
+/** 日常的に使う設定。最初に 1 回行う設定は初期設定の画面（SetupPage）にまとめる */
 export function SettingsPage({ me }: { me: { email: string } }) {
-  const [settings, setSettings] = useState<SettingsResponse | null>(null);
-  const load = () => api<SettingsResponse>("/api/admin/settings").then(setSettings);
-  useEffect(() => {
-    load();
-  }, []);
-
-  if (!settings) return <p className="note">読み込み中…</p>;
   return (
     <div className="stack">
       <p className="note">ログイン中: {me.email}</p>
-      <GoogleSection google={settings.google} />
-      <IcalSection />
-      <DevicesSection />
-      <BasicSection initial={settings.property} onSaved={load} />
+      <section className="card">
+        <h2>初期設定</h2>
+        <p className="note">
+          施設の基本情報、通知メールの宛先、Google との連携、予約の取り込み（iCal）、タブレットの登録、管理者の追加は「初期設定」の画面にあります。後から変更するときも、そちらを使います。
+        </p>
+        <div className="actions">
+          <a
+            className="button primary"
+            href="/admin/setup"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate("/admin/setup");
+            }}
+          >
+            初期設定を開く
+          </a>
+        </div>
+      </section>
       <TextsSection />
-      <EmailListSection
-        title="通知メールの宛先"
-        description="登録したすべてのアドレスに、通知メールを 1 通で送ります。"
-        endpoint="/api/admin/recipients"
-        listKey="recipients"
-      />
-      <EmailListSection
-        title="ログインできるアカウント"
-        description="管理画面にログインできる Google アカウントです。最後の 1 件は削除できません。"
-        endpoint="/api/admin/accounts"
-        listKey="accounts"
-      />
       <SessionsSection />
     </div>
   );

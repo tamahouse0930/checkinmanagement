@@ -16,11 +16,11 @@ export interface HostNotice {
  */
 export async function notifyHost(env: Env, db: Db, notice: HostNotice): Promise<void> {
   try {
-    const { recipients, googleLink } = await getSettings(db);
+    const { recipients, googleLink, property } = await getSettings(db);
     if (!googleLink || recipients.length === 0) return;
     await sendMail(env, db, {
       to: recipients,
-      subject: `${notice.isTest ? "[テスト] " : ""}[TAMAHOUSE] ${notice.subject}`,
+      subject: `${notice.isTest ? "[テスト] " : ""}[${property.name}] ${notice.subject}`,
       text: notice.text,
     });
   } catch (error) {

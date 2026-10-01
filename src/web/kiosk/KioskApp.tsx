@@ -4,6 +4,7 @@ import { fill } from "../i18n/guest";
 import { KIOSK_TEXT, type KioskText } from "../i18n/kiosk";
 import { resizeImage } from "../registration/photo";
 import { acquireCamera, releaseCamera } from "./cameraStream";
+import { useDocumentTitle } from "../lib/title";
 
 /** 玄関タブレットの画面（要件定義書 5.4、設計書 4.6） */
 
@@ -212,6 +213,7 @@ export function KioskApp() {
   const [screen, setScreen] = useState<Screen>({ kind: "loading" });
   const [lang, setLang] = useState<Lang>("ja");
   const [status, setStatus] = useState<Status | null>(null);
+  useDocumentTitle(status?.propertyName);
   const [guests, setGuests] = useState<{ guestId: string; name: string; done: boolean; isTest: boolean }[]>([]);
   const [stays, setStays] = useState<{ reservationId: string; name: string; isTest: boolean }[]>([]);
   const [pairCode, setPairCode] = useState("");

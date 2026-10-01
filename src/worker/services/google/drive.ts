@@ -9,7 +9,10 @@ import { getGoogleAccessToken } from "./token";
 const DRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
-export const ROOT_FOLDER_NAME = "TAMAHOUSE宿泊者写真";
+/** 写真の保存先のフォルダの名前。作るときの施設名を使い、後で施設名を変えてもフォルダは ID で探すため影響しない */
+export function rootFolderName(propertyName: string): string {
+  return `${propertyName}宿泊者写真`;
+}
 
 export class DriveError extends Error {}
 
@@ -35,13 +38,13 @@ async function findOrCreateFolder(token: string, name: string, parentId: string)
   return found?.id ?? createFolder(token, name, parentId);
 }
 
-/** 写真の保存先のフォルダ（TAMAHOUSE宿泊者写真）がなければ作り、ID を返す */
+/** 写真の保存先のフォルダ（例: TAMAHOUSE宿泊者写真）がなければ作り、ID を返す */
 export async function ensureRootFolder(env: Env, db: Db): Promise<string> {
   const { property } = await getSettings(db);
   if (property.drive_root_folder_id) return property.drive_root_folder_id;
 
   const token = await getGoogleAccessToken(env, db);
-  const folderId = await createFolder(token, ROOT_FOLDER_NAME);
+  const folderId = await createFolder(token, rootFolderName(property.name));
   await db.run(
     db
       .prepare(
