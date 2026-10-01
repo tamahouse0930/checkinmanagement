@@ -824,6 +824,13 @@ label.check.inline {
   color: var(--primary-text);
 }
 
+/* 生年月日（年・月・日の選択欄を横に並べる） */
+.birth-date {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr;
+  gap: 8px;
+}
+
 .photo-field {
   display: grid;
   gap: 8px;

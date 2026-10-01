@@ -4,6 +4,7 @@ import { diffDays } from "../../shared/dates";
 import { EMPTY_GUEST, type GuestFields, type GuestView, isUnder16, type MissingField, missingFields, normalizeGuest } from "../../shared/guest";
 import { detectLang, isLang, LANG_NAME, LANGS, type Lang } from "../../shared/langs";
 import { fill, GUEST_TEXT, type GuestText } from "../i18n/guest";
+import { BirthDateSelect } from "./BirthDateSelect";
 import { CountrySelect } from "./CountrySelect";
 import { alpha3ToAlpha2, type MrzResult } from "../../shared/mrz";
 import { resizeImage } from "./photo";
@@ -343,17 +344,16 @@ function GuestEditor(props: {
               <input value={g.fullName} onChange={(e) => set("fullName", e.target.value)} maxLength={100} autoComplete="name" />
             </label>
 
-            <label className={bad("birthDate")}>
-              {t.birthDate}
-              <input
-                type="date"
+            <div className={`field ${bad("birthDate") ?? ""}`}>
+              <span className="label">{t.birthDate}</span>
+              <BirthDateSelect
                 value={g.birthDate}
-                min="1900-01-01"
-                max={checkInDate}
-                onChange={(e) => set("birthDate", e.target.value)}
-                autoComplete="bday"
+                checkInDate={checkInDate}
+                labels={{ year: t.birthYear, month: t.birthMonth, day: t.birthDay }}
+                onChange={(v) => set("birthDate", v)}
+                disabled={disabled}
               />
-            </label>
+            </div>
 
             {!g.isJapanese && (
               <>
