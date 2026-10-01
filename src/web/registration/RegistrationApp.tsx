@@ -176,16 +176,25 @@ function GuestEditor(props: {
   const isCompanion = props.role === "companion";
   const [g, setG] = useState<GuestFields>(() => {
     const base = props.guest ? { ...props.guest } : { ...EMPTY_GUEST };
-    // 2 人目以降は、代表者と同じ答え・国籍・住所・連絡先を初期値にする（要件定義書 G-17）
+    // 2 人目以降は、代表者と同じ答え・国籍を初期値にする。住所・連絡先は「代表者と同じ」にチェックしたときだけ写す（要件定義書 G-17）
     if (seq > 1 && representative && !props.guest?.fullName) {
       if (base.isJapanese === null) base.isJapanese = representative.isJapanese;
       if (!base.nationality && representative.isJapanese === false) base.nationality = representative.nationality;
-      if (!base.addressCountry) base.addressCountry = representative.addressCountry;
-      if (!base.address) base.address = representative.address;
-      if (!base.contact) base.contact = representative.contact;
     }
     return base;
   });
+  /** 「代表者と同じ」のチェック。初期値は外す。保存済みで代表者と同じ値なら付けておく */
+  const [sameAddress, setSameAddress] = useState(
+    () =>
+      seq > 1 &&
+      !!representative &&
+      !!props.guest?.address &&
+      props.guest.address === representative.address &&
+      props.guest.addressCountry === representative.addressCountry,
+  );
+  const [sameContact, setSameContact] = useState(
+    () => seq > 1 && !!representative && !!props.guest?.contact && props.guest.contact === representative.contact,
+  );
   const [consent, setConsent] = useState(props.guest?.consented ?? false);
   const [showMissing, setShowMissing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -239,8 +248,6 @@ function GuestEditor(props: {
   /** 保存を押した後、足りない項目を赤く示す */
   const bad = (field: MissingField | "consent") => (showMissing && problems.includes(field) ? "missing" : undefined);
   const problemLabel = (p: MissingField | "consent") => (p === "consent" ? t.consentLabel : t[MISSING_KEY[p]]);
-  const sameAddress = seq > 1 && !!representative && g.address === representative.address && g.addressCountry === representative.addressCountry;
-  const sameContact = seq > 1 && !!representative && g.contact === representative.contact;
 
   const save = async (): Promise<boolean> => {
     setSaving(true);
@@ -358,11 +365,11 @@ function GuestEditor(props: {
                 <input
                   type="checkbox"
                   checked={sameAddress}
-                  onChange={(e) =>
-                    e.target.checked
-                      ? setG((p) => ({ ...p, address: representative.address, addressCountry: representative.addressCountry }))
-                      : setG((p) => ({ ...p, address: "" }))
-                  }
+                  onChange={(e) => {
+                    setSameAddress(e.target.checked);
+                    if (e.target.checked) setG((p) => ({ ...p, address: representative.address, addressCountry: representative.addressCountry }));
+                    else setG((p) => ({ ...p, address: "" }));
+                  }}
                 />
                 {t.address}: {t.sameAsRepresentative}
               </label>
@@ -397,7 +404,10 @@ function GuestEditor(props: {
                 <input
                   type="checkbox"
                   checked={sameContact}
-                  onChange={(e) => set("contact", e.target.checked ? representative.contact : "")}
+                  onChange={(e) => {
+                    setSameContact(e.target.checked);
+                    set("contact", e.target.checked ? representative.contact : "");
+                  }}
                 />
                 {t.contact}: {t.sameAsRepresentative}
               </label>
