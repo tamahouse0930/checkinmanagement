@@ -43,7 +43,8 @@ const kioskAuth: MiddlewareHandler<KioskEnv> = async (c, next) => {
   if (c.req.method !== "GET" && c.req.header("Origin") !== new URL(c.req.url).origin) return forbidden(c);
 
   if (c.req.header("X-Kiosk-Mode") === "test") {
-    const admin = await readAdminSession(c as unknown as Context<AppEnv>);
+    // 宿泊者の氏名を表示するため、施設管理者だけ
+    const admin = await readAdminSession(c as unknown as Context<AppEnv>, "facility");
     if (!admin) return c.json({ error: { code: "unauthorized", message: "unauthorized" } }, 401);
     c.set("kioskActor", `admin:${admin.email}`);
     c.set("testMode", true);

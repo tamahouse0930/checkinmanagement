@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
-import { api, ApiError } from "../lib/api";
+import type { AccountMe } from "../../shared/api-types";
+import { AccountPending, logout, NoPermission, useAccount } from "../account/useAccount";
 import { navigate, usePathname } from "../lib/router";
 import { useDocumentTitle } from "../lib/title";
-import { usePublicInfo } from "../public/usePublicInfo";
 import { CalendarPage } from "./CalendarPage";
 import { LedgerPage, LedgerStayPage } from "./LedgerPage";
 import { RegisterPrintPage } from "./RegisterPrintPage";
@@ -10,12 +9,6 @@ import { ReservationForm } from "./ReservationForm";
 import { ReservationPage } from "./ReservationPage";
 import { SettingsPage } from "./SettingsPage";
 import { SetupPage } from "./SetupPage";
-
-interface Me {
-  email: string;
-  serviceEmail: string;
-  propertyName: string;
-}
 
 const NAV = [
   { path: "/admin", label: "カレンダー" },
@@ -30,7 +23,7 @@ function isActive(path: string, pathname: string): boolean {
   return pathname === path || pathname.startsWith(`${path}/`);
 }
 
-function AdminRoute({ pathname, me, onPropertySaved }: { pathname: string; me: Me; onPropertySaved: () => void }) {
+function AdminRoute({ pathname, me, onPropertySaved }: { pathname: string; me: AccountMe; onPropertySaved: () => void }) {
   if (pathname === "/admin/settings") return <SettingsPage me={me} />;
   if (pathname === "/admin/setup") return <SetupPage onPropertySaved={onPropertySaved} />;
   if (pathname === "/admin/photos") return <LedgerPage />;
@@ -45,53 +38,15 @@ function AdminRoute({ pathname, me, onPropertySaved }: { pathname: string; me: M
   return <CalendarPage />;
 }
 
-function urlError(): string | null {
-  return new URLSearchParams(location.search).get("error");
-}
-
-function LoginScreen() {
-  const error = urlError();
-  const info = usePublicInfo();
-  return (
-    <main className="login">
-      <h1>{info?.name} 管理画面</h1>
-      {error && <p className="alert">{error}</p>}
-      <a
-        className="button primary"
-        href={location.pathname === "/admin" ? "/auth/google/login" : `/auth/google/login?next=${encodeURIComponent(location.pathname)}`}
-      >
-        Google でログイン
-      </a>
-      <p className="note">登録済みの Google アカウントでログインしてください。</p>
-    </main>
-  );
-}
-
+/** 施設管理者の画面（予約・名簿・写真・設定。設計書 7.1） */
 export function AdminApp() {
   const pathname = usePathname();
-  const [me, setMe] = useState<Me | null>(null);
-  const [state, setState] = useState<"loading" | "login" | "ready" | "error">("loading");
+  const account = useAccount();
+  useDocumentTitle(account.me?.propertyName);
 
-  const loadMe = () =>
-    api<Me>("/api/admin/me")
-      .then((m) => {
-        setMe(m);
-        setState("ready");
-      })
-      .catch((e: unknown) => setState(e instanceof ApiError && e.status === 401 ? "login" : "error"));
-  useEffect(() => {
-    loadMe();
-  }, []);
-  useDocumentTitle(me?.propertyName);
-
-  if (state === "loading") return <main className="center">読み込み中…</main>;
-  if (state === "login") return <LoginScreen />;
-  if (state === "error" || !me) return <main className="center">エラーが発生しました。ページを読み込み直してください。</main>;
-
-  const logout = async () => {
-    await api("/api/admin/logout", { method: "POST" });
-    location.href = "/admin";
-  };
+  if (account.state !== "ready") return <AccountPending state={account.state} />;
+  const { me } = account;
+  if (!me.roles.facility) return <NoPermission other={me.roles.system ? { href: "/system", label: "システム管理の画面へ" } : null} />;
 
   return (
     <div className="admin">
@@ -102,11 +57,7 @@ export function AdminApp() {
             <a
               key={item.path}
               href={item.path}
-              className={
-                isActive(item.path, pathname)
-                  ? "active"
-                  : undefined
-              }
+              className={isActive(item.path, pathname) ? "active" : undefined}
               onClick={(e) => {
                 e.preventDefault();
                 navigate(item.path);
@@ -115,13 +66,14 @@ export function AdminApp() {
               {item.label}
             </a>
           ))}
+          {me.roles.system && <a href="/system">システム管理</a>}
         </nav>
         <button className="link" onClick={logout} title={me.email}>
           ログアウト
         </button>
       </header>
       <main className="admin-main" key={pathname + location.search}>
-        <AdminRoute pathname={pathname} me={me} onPropertySaved={loadMe} />
+        <AdminRoute pathname={pathname} me={me} onPropertySaved={account.reload} />
       </main>
     </div>
   );

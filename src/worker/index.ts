@@ -2,12 +2,14 @@ import { Hono } from "hono";
 import type { AppEnv, Env } from "./env";
 import { Db } from "./lib/db";
 import { rateLimit } from "./middleware/rate-limit";
+import { accountRoutes } from "./routes/account";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
 import { kioskRoutes } from "./routes/kiosk";
 import { publicRoutes } from "./routes/public";
 import { companionRoutes, representativeRoutes } from "./routes/registration";
 import { runScheduled } from "./services/scheduled";
+import { systemRoutes } from "./routes/system";
 
 const app = new Hono<AppEnv>();
 
@@ -46,7 +48,9 @@ for (const path of ["/auth/*", "/api/public/*", "/api/r/*", "/api/g/*", "/api/ki
 }
 
 app.route("/auth/google", authRoutes);
+app.route("/api/account", accountRoutes);
 app.route("/api/admin", adminRoutes);
+app.route("/api/system", systemRoutes);
 app.route("/api/public", publicRoutes);
 app.route("/api/r", representativeRoutes);
 app.route("/api/g", companionRoutes);

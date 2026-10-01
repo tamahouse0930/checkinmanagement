@@ -2,7 +2,8 @@ import { type ReactNode, useEffect, useState } from "react";
 import type { SetupStatus, SetupStepKey } from "../../shared/api-types";
 import { SETUP_STEPS } from "../../shared/setup";
 import { api } from "../lib/api";
-import { BasicSection, DevicesSection, EmailListSection, GoogleSection, IcalSection, type SettingsResponse } from "./SettingsPage";
+import { EmailListSection } from "../account/common";
+import { BasicSection, DevicesSection, GoogleSection, IcalSection, type SettingsResponse } from "./SettingsPage";
 
 
 /**
@@ -27,7 +28,6 @@ export function SetupPage({ onPropertySaved }: { onPropertySaved: () => void }) 
       <div id={`setup-${key}`} className="setup-step">
         <p className="setup-step-label">
           手順 {index + 1}
-          {SETUP_STEPS[index].optional && "（任意）"}
           <span className={status.steps[key] ? "setup-done" : "setup-todo"}>{status.steps[key] ? "設定済み" : "未設定"}</span>
         </p>
         {children}
@@ -50,7 +50,6 @@ export function SetupPage({ onPropertySaved }: { onPropertySaved: () => void }) 
             <li key={s.key} className={status.steps[s.key] ? "done" : undefined}>
               <a href={`#setup-${s.key}`}>
                 {s.label}
-                {s.optional && "（任意）"}
               </a>
               <span>{status.steps[s.key] ? "✓" : "—"}</span>
             </li>
@@ -82,17 +81,6 @@ export function SetupPage({ onPropertySaved }: { onPropertySaved: () => void }) 
       {step("google", <GoogleSection google={settings.google} />)}
       {step("ical", <IcalSection onChanged={loadStatus} />)}
       {step("devices", <DevicesSection onChanged={loadStatus} />)}
-      {step(
-        "accounts",
-        <EmailListSection
-          title="ログインできるアカウント"
-          description="一緒に管理する人の Google アカウントを追加すると、その人も管理画面にログインできます。「案内メールを送る」で、管理画面の URL とログインの方法をその人に知らせられます（Google との連携が必要です）。最後の 1 件は削除できません。"
-          endpoint="/api/admin/accounts"
-          listKey="accounts"
-          onChanged={loadStatus}
-          invite
-        />,
-      )}
     </div>
   );
 }

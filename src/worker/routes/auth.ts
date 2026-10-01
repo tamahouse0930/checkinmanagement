@@ -5,7 +5,7 @@ import type { AppEnv } from "../env";
 import { auditStatement } from "../lib/audit";
 import { base64UrlDecode, base64UrlEncode, encryptText, randomToken, signValue, utf8Decode, utf8Encode, verifySignedValue } from "../lib/crypto";
 import { encodeSession, newSessionPayload } from "../lib/session";
-import { getSettings, invalidateSettings } from "../lib/settings";
+import { type AdminRoles, getSettings, invalidateSettings } from "../lib/settings";
 import { nowIso } from "../lib/time";
 import { readAdminSession, setSessionCookie } from "../middleware/admin";
 import { ensureRootFolder } from "../services/google/drive";
@@ -72,6 +72,16 @@ function adminRedirect(c: Context<AppEnv>, path: string, error?: string): Respon
   return c.redirect(error ? `${path}?error=${encodeURIComponent(error)}` : path);
 }
 
+/**
+ * ログイン後に開く画面。戻り先（next）がその人の権限で開ける画面ならそこへ、
+ * なければ施設管理者は施設の管理画面、システム管理者だけの人はシステム管理の画面へ
+ */
+function landingPath(roles: AdminRoles, next: string | undefined): string {
+  const path = safeAdminPath(next);
+  if (path && (path.startsWith("/system") ? roles.system : roles.facility)) return path;
+  return roles.facility ? "/admin" : "/system";
+}
+
 export const authRoutes = new Hono<AppEnv>();
 
 /** 管理画面のログイン（各自の Google アカウント。設計書 7.1） */
@@ -79,7 +89,7 @@ authRoutes.get("/login", (c) => startFlow(c, "login"));
 
 /** Google ドライブ・Gmail との連携（tamahouse0930@gmail.com で 1 回だけ許可する） */
 authRoutes.get("/link", async (c) => {
-  if (!(await readAdminSession(c))) return adminRedirect(c, "/admin", "ログインしてください");
+  if (!(await readAdminSession(c, "facility"))) return adminRedirect(c, "/admin", "ログインしてください");
   return startFlow(c, "link");
 });
 
@@ -108,7 +118,8 @@ authRoutes.get("/callback", async (c) => {
 
   if (flow.mode === "login") {
     const settings = await getSettings(db);
-    if (!settings.adminEmails.has(claims.email)) {
+    const roles = settings.accounts.get(claims.email);
+    if (!roles) {
       return adminRedirect(c, "/admin", `${claims.email} ではログインできません。登録済みのアカウントでログインしてください`);
     }
     const sid = randomToken();
@@ -134,11 +145,11 @@ authRoutes.get("/callback", async (c) => {
         ].join("\n"),
       }),
     );
-    return c.redirect(safeAdminPath(flow.next) ?? "/admin");
+    return c.redirect(landingPath(roles, flow.next));
   }
 
   // 連携: ログイン中の管理者が、tamahouse0930@gmail.com で許可した場合だけ受け付ける
-  const admin = await readAdminSession(c);
+  const admin = await readAdminSession(c, "facility");
   if (!admin) return adminRedirect(c, "/admin", "ログインしてください");
   if (claims.email !== c.env.GOOGLE_SERVICE_EMAIL.toLowerCase()) {
     return adminRedirect(c, back, `${c.env.GOOGLE_SERVICE_EMAIL} で許可してください（${claims.email} で許可されました）`);

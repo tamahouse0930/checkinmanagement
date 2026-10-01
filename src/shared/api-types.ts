@@ -28,8 +28,35 @@ export interface CalendarResponse {
   setupPending: SetupStepKey[];
 }
 
-/** 初期設定の項目（設計書 4.14）。accounts（管理者の追加）は任意 */
-export type SetupStepKey = "basic" | "recipients" | "google" | "ical" | "devices" | "accounts";
+/** 初期設定の項目（設計書 4.14） */
+export type SetupStepKey = "basic" | "recipients" | "google" | "ical" | "devices";
+
+/** システムの状態（設計書 4.15）。システム管理者・施設管理者の両方に表示する。宿泊者の個人情報は含めない */
+export interface SystemStatus {
+  /** 毎日の定期処理と、最後に実行した日（日本時間の日付） */
+  jobs: { job: string; last_run: string }[];
+  google: { linked: boolean; accountEmail: string | null; linkedAt: string | null; lastError: string | null };
+  icalSources: { channel: "airbnb" | "booking"; last_synced_at: string | null; last_error: string | null }[];
+  devices: { name: string; last_seen_at: string | null }[];
+  missingPhotoCount: number;
+}
+
+/** ログイン中の管理者（/api/account/me） */
+export interface AccountMe {
+  email: string;
+  roles: { system: boolean; facility: boolean };
+  serviceEmail: string;
+  propertyName: string;
+}
+
+/** 操作ログ（/api/system/audit-logs） */
+export interface AuditLogRow {
+  id: string;
+  actor: string;
+  action: string;
+  target: string | null;
+  created_at: string;
+}
 
 export interface SetupStatus {
   steps: Record<SetupStepKey, boolean>;

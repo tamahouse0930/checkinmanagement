@@ -5,6 +5,7 @@ import { KioskApp } from "./kiosk/KioskApp";
 import { HomePage } from "./public/HomePage";
 import { PrivacyPage } from "./public/PrivacyPage";
 import { RegistrationApp } from "./registration/RegistrationApp";
+import { SystemApp } from "./system/SystemApp";
 import "./styles.css";
 
 function Placeholder({ title }: { title: string }) {
@@ -18,6 +19,7 @@ function Placeholder({ title }: { title: string }) {
 function Root() {
   const path = location.pathname;
   if (path === "/admin" || path.startsWith("/admin/")) return <AdminApp />;
+  if (path === "/system" || path.startsWith("/system/")) return <SystemApp />;
   const reg = /^\/(r|g)\/([A-Za-z0-9_-]{16,64})$/.exec(path);
   if (reg) return <RegistrationApp role={reg[1] as "r" | "g"} token={reg[2]} />;
   if (path === "/kiosk") return <KioskApp />;

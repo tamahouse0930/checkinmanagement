@@ -6,6 +6,8 @@ describe("ログイン後の戻り先（設計書 4.14）", () => {
     expect(safeAdminPath("/admin")).toBe("/admin");
     expect(safeAdminPath("/admin/setup")).toBe("/admin/setup");
     expect(safeAdminPath("/admin/reservations/abc-123_X")).toBe("/admin/reservations/abc-123_X");
+    expect(safeAdminPath("/system")).toBe("/system");
+    expect(safeAdminPath("/system/logs")).toBe("/system/logs");
   });
 
   it("外部のサイトや管理画面以外へは戻さない", () => {
@@ -19,6 +21,7 @@ describe("ログイン後の戻り先（設計書 4.14）", () => {
       "/admin/../kiosk",
       "/admin//evil.example",
       "/administrator",
+      "/systemx",
       "/admin/setup?x=1",
       "/admin/setup#x",
       "/kiosk",

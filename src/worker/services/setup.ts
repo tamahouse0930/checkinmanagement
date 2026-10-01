@@ -9,7 +9,6 @@ export function deviceCountStatement(db: Db) {
 
 /**
  * 初期設定の各項目が済んでいるか（設計書 4.14）。設定のキャッシュと、iCal の取得元・タブレットの数から決める。
- * 管理者の追加は任意のため、完了の判定（pending）には含めない
  */
 export function setupStatus(settings: Settings, icalCount: number, deviceCount: number): SetupStatus {
   const { property } = settings;
@@ -19,7 +18,6 @@ export function setupStatus(settings: Settings, icalCount: number, deviceCount: 
     google: settings.googleLink !== null,
     ical: icalCount > 0,
     devices: deviceCount > 0,
-    accounts: settings.adminEmails.size > 1,
   };
   const pending = (["basic", "recipients", "google", "ical", "devices"] as const).filter((k) => !steps[k]);
   return { steps, pending };

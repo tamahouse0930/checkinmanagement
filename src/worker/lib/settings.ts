@@ -30,9 +30,18 @@ export interface RevokedSession {
   exp: number;
 }
 
+/** 管理者の権限（設計書 7.1）。1 つのアカウントが両方を持つこともある */
+export interface AdminRoles {
+  /** システム管理者: 施設管理者の登録、操作ログの閲覧。宿泊者の名簿・写真は見られない */
+  system: boolean;
+  /** 施設管理者: 予約・名簿・写真・設定 */
+  facility: boolean;
+}
+
 export interface Settings {
   property: PropertyRow;
-  adminEmails: Set<string>;
+  /** ログインできるアカウントと権限。キーは小文字のメールアドレス */
+  accounts: Map<string, AdminRoles>;
   recipients: string[];
   revokedSids: Set<string>;
   googleLink: GoogleLinkRow | null;
@@ -65,7 +74,7 @@ export async function getSettings(db: Db): Promise<Settings> {
 
   const [property, accounts, recipients, link, texts] = await db.batch([
     db.prepare("SELECT * FROM properties WHERE id = ?").bind(PROPERTY_ID),
-    db.prepare("SELECT email FROM admin_accounts LIMIT 50"),
+    db.prepare("SELECT email, is_system, is_facility FROM admin_accounts LIMIT 50"),
     db.prepare("SELECT email FROM notify_recipients LIMIT 50"),
     db.prepare(
       "SELECT account_email, scopes, refresh_token_enc, linked_at, last_error FROM google_link WHERE id = 1",
@@ -78,7 +87,11 @@ export async function getSettings(db: Db): Promise<Settings> {
 
   const value: Settings = {
     property: propertyRow,
-    adminEmails: new Set((accounts.results as { email: string }[]).map((r) => r.email.toLowerCase())),
+    accounts: new Map(
+      (accounts.results as { email: string; is_system: number; is_facility: number }[])
+        .map((r) => [r.email.toLowerCase(), { system: r.is_system === 1, facility: r.is_facility === 1 }] as const)
+        .filter(([, roles]) => roles.system || roles.facility),
+    ),
     recipients: (recipients.results as { email: string }[]).map((r) => r.email),
     revokedSids: new Set(parseRevoked(propertyRow.revoked_sessions).map((r) => r.sid)),
     googleLink: (link.results[0] as GoogleLinkRow | undefined) ?? null,
@@ -88,6 +101,11 @@ export async function getSettings(db: Db): Promise<Settings> {
   };
   cache = { value, expires: now + CACHE_TTL_MS };
   return value;
+}
+
+/** 施設管理者のメールアドレス */
+export function facilityEmails(settings: Settings): string[] {
+  return [...settings.accounts].filter(([, roles]) => roles.facility).map(([email]) => email);
 }
 
 export function invalidateSettings(): void {

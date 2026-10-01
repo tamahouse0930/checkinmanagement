@@ -1,12 +1,10 @@
 import { Hono } from "hono";
-import { deleteCookie } from "hono/cookie";
 import { z } from "zod";
 import type { AppEnv } from "../env";
 import { auditStatement } from "../lib/audit";
-import { SESSION_COOKIE } from "../lib/session";
-import { getSettings, invalidateSettings, parseRevoked, PROPERTY_ID, type RevokedSession } from "../lib/settings";
+import { getSettings, invalidateSettings, PROPERTY_ID } from "../lib/settings";
 import { nowIso } from "../lib/time";
-import { requireAdmin } from "../middleware/admin";
+import { requireFacility } from "../middleware/admin";
 import { sendMail } from "../services/google/gmail";
 import { loadSetupStatus } from "../services/setup";
 import { forgetDevice } from "./kiosk";
@@ -15,10 +13,10 @@ import { ledgerRoutes } from "./ledger";
 import { reservationRoutes } from "./reservations";
 import { LANGS } from "../../shared/langs";
 import { DEFAULT_TEXTS, TEXT_KINDS, type TextKind } from "../../shared/templates";
-import { setupLabel } from "../../shared/setup";
 
+/** 施設管理者の API（予約・名簿・写真・設定。設計書 7.1） */
 export const adminRoutes = new Hono<AppEnv>();
-adminRoutes.use("*", requireAdmin);
+adminRoutes.use("*", requireFacility);
 adminRoutes.route("/", reservationRoutes);
 adminRoutes.route("/", adminGuestRoutes);
 adminRoutes.route("/", ledgerRoutes);
@@ -28,143 +26,6 @@ function badRequest(message: string) {
 }
 
 const emailSchema = z.email().transform((v) => v.toLowerCase());
-
-/**
- * セッションを取り消す。取り消したセッション ID は設定の行に持ち、キャッシュと照合する（設計書 7.1）。
- * 有効期限を過ぎたものはここで取り除く。
- */
-function revokeStatement(c: { var: AppEnv["Variables"] }, current: string, add: RevokedSession) {
-  const now = Date.now();
-  const list = parseRevoked(current).filter((r) => r.exp > now && r.sid !== add.sid);
-  list.push(add);
-  return c.var.db
-    .prepare("UPDATE properties SET revoked_sessions = ?, updated_at = ? WHERE id = ?")
-    .bind(JSON.stringify(list), nowIso(), PROPERTY_ID);
-}
-
-adminRoutes.get("/me", async (c) => {
-  const { property } = await getSettings(c.var.db);
-  return c.json({ email: c.var.admin.email, serviceEmail: c.env.GOOGLE_SERVICE_EMAIL, propertyName: property.name });
-});
-
-adminRoutes.post("/logout", async (c) => {
-  const db = c.var.db;
-  const { property } = await getSettings(db);
-  const admin = c.var.admin;
-  await db.batch([
-    db.prepare("DELETE FROM admin_sessions WHERE id = ?").bind(admin.sid),
-    revokeStatement(c, property.revoked_sessions, { sid: admin.sid, exp: admin.exp }),
-  ]);
-  invalidateSettings();
-  deleteCookie(c, SESSION_COOKIE, { path: "/" });
-  return c.json({ ok: true });
-});
-
-// ---- ログイン中の端末 ----
-
-adminRoutes.get("/sessions", async (c) => {
-  const db = c.var.db;
-  const rows = await db.all<{ id: string; email: string; user_agent: string | null; created_at: string; last_seen_at: string }>(
-    db
-      .prepare(
-        "SELECT id, email, user_agent, created_at, last_seen_at FROM admin_sessions WHERE expires_at > ? ORDER BY created_at DESC LIMIT 50",
-      )
-      .bind(nowIso()),
-  );
-  return c.json({ sessions: rows.map((r) => ({ ...r, current: r.id === c.var.admin.sid })) });
-});
-
-adminRoutes.delete("/sessions/:id", async (c) => {
-  const db = c.var.db;
-  const id = c.req.param("id");
-  const [{ property }, row] = await Promise.all([
-    getSettings(db),
-    db.first<{ expires_at: string }>(db.prepare("SELECT expires_at FROM admin_sessions WHERE id = ?").bind(id)),
-  ]);
-  if (!row) return c.json({ error: { code: "not_found", message: "端末が見つかりません" } }, 404);
-  await db.batch([
-    db.prepare("DELETE FROM admin_sessions WHERE id = ?").bind(id),
-    revokeStatement(c, property.revoked_sessions, { sid: id, exp: Date.parse(row.expires_at) }),
-    auditStatement(db, `admin:${c.var.admin.email}`, "revoke_session", id),
-  ]);
-  invalidateSettings();
-  return c.json({ ok: true });
-});
-
-// ---- ログインできるアカウント ----
-
-adminRoutes.get("/accounts", async (c) => {
-  const db = c.var.db;
-  const rows = await db.all(db.prepare("SELECT email, name, created_at FROM admin_accounts ORDER BY created_at LIMIT 50"));
-  return c.json({ accounts: rows });
-});
-
-adminRoutes.post("/accounts", async (c) => {
-  const parsed = z.object({ email: emailSchema, name: z.string().trim().max(50).optional() }).safeParse(await c.req.json());
-  if (!parsed.success) return c.json(badRequest("メールアドレスを確認してください"), 400);
-  const db = c.var.db;
-  await db.batch([
-    db
-      .prepare("INSERT INTO admin_accounts (email, name, created_at) VALUES (?, ?, ?) ON CONFLICT (email) DO UPDATE SET name = excluded.name")
-      .bind(parsed.data.email, parsed.data.name || null, nowIso()),
-    auditStatement(db, `admin:${c.var.admin.email}`, "add_admin_account", parsed.data.email),
-  ]);
-  invalidateSettings();
-  return c.json({ ok: true });
-});
-
-adminRoutes.delete("/accounts/:email", async (c) => {
-  const email = c.req.param("email").toLowerCase();
-  const db = c.var.db;
-  const { adminEmails } = await getSettings(db);
-  if (!adminEmails.has(email)) return c.json({ error: { code: "not_found", message: "アカウントが見つかりません" } }, 404);
-  // 最後の 1 件は削除できない（全員がログインできなくなるのを防ぐ）
-  if (adminEmails.size <= 1) return c.json(badRequest("最後のアカウントは削除できません"), 400);
-  await db.batch([
-    db.prepare("DELETE FROM admin_accounts WHERE email = ?").bind(email),
-    auditStatement(db, `admin:${c.var.admin.email}`, "delete_admin_account", email),
-  ]);
-  invalidateSettings();
-  return c.json({ ok: true });
-});
-
-/**
- * 初期設定の案内メール（設計書 4.14）。ログインできるアカウントに登録した人へ、管理画面の URL と
- * ログインに使う Google アカウント、まだ済んでいない初期設定の項目を知らせる
- */
-adminRoutes.post("/accounts/:email/invite", async (c) => {
-  const email = c.req.param("email").toLowerCase();
-  const db = c.var.db;
-  const { settings, status } = await loadSetupStatus(db);
-  if (!settings.adminEmails.has(email)) return c.json({ error: { code: "not_found", message: "アカウントが見つかりません" } }, 404);
-  if (!settings.googleLink) return c.json(badRequest("Google と連携してから送ってください（メールは連携したアカウントから送ります）"), 400);
-
-  const { pending } = status;
-  const name = settings.property.name;
-  const url = `${new URL(c.req.url).origin}/admin/setup`;
-  try {
-    await sendMail(c.env, db, {
-      to: [email],
-      subject: `[${name}] 管理画面へのご案内（初期設定）`,
-      text: [
-        `${c.var.admin.email} さんが、${name} のチェックイン管理システムの管理者として、あなたを登録しました。`,
-        "",
-        "次の URL を開き、「Google でログイン」から、このメールを受け取った Google アカウントでログインしてください。",
-        `ログインに使うアカウント: ${email}`,
-        url,
-        "",
-        "ログインすると初期設定の画面が開きます。上から順に確認・設定してください。",
-        pending.length > 0 ? `まだ済んでいない項目: ${pending.map(setupLabel).join("、")}` : "必要な初期設定はすべて済んでいます。",
-        "",
-        "心当たりがない場合は、このメールを破棄してください。",
-      ].join("\n"),
-    });
-  } catch (error) {
-    return c.json({ error: { code: "mail_failed", message: String(error instanceof Error ? error.message : error) } }, 502);
-  }
-  c.executionCtx.waitUntil(db.run(auditStatement(db, `admin:${c.var.admin.email}`, "send_admin_invite", email)));
-  return c.json({ ok: true });
-});
 
 // ---- 通知メールの宛先 ----
 

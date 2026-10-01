@@ -1567,3 +1567,15 @@ label.check.inline {
   gap: 12px;
   justify-content: flex-end;
 }
+
+.setup-done,
+.setup-todo {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.alert-text {
+  color: var(--danger);
+}

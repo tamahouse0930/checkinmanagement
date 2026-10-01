@@ -1,5 +1,5 @@
 import type { Db } from "./lib/db";
-import type { SessionPayload } from "./lib/session";
+import type { AdminSession } from "./middleware/admin";
 import type { ReservationRow } from "./services/guests";
 
 export interface Env {
@@ -23,7 +23,8 @@ export type AppEnv = {
   Bindings: Env;
   Variables: {
     db: Db;
-    admin: SessionPayload;
+    /** ログイン中の管理者と権限 */
+    admin: AdminSession;
     /** 宿泊者入力画面の URL のトークンから引いた予約 */
     reservation: ReservationRow;
     /** 同行者用の URL の場合、その同行者の番号 */

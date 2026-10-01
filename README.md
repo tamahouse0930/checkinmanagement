@@ -13,7 +13,8 @@ Cloudflare Workers + D1（無料プラン）と、管理用の Google アカウ�
 npm install
 cp .dev.vars.example .dev.vars   # 値を入れる（下の「Google Cloud の設定」）
 npm run db:migrate:local
-npm run admin:add -- --local <自分の Google アカウント>
+npm run admin:add -- --local --system <自分の Google アカウント>   # システム管理者
+npm run admin:add -- --local <自分の Google アカウント>            # 施設管理者
 npm run dev                      # http://localhost:5173/admin
 ```
 
@@ -67,5 +68,5 @@ GitHub の main に push すると、Cloudflare が自動でビルドしてデ�
 1. `tamahouse0930@gmail.com` で管理画面（`/admin`）にログインする（マイグレーションで最初から登録済み）
 2. 「設定」→「初期設定を開く」（`/admin/setup`）で、上から順に設定する。済んだ項目には「設定済み」と表示される
    - 通知メールの宛先を登録してから、代表の管理者が「Google と連携」を押し、`tamahouse0930@gmail.com` で許可する。「テストメールを送る」で届けば連携は完了
-   - 「ログインできるアカウント」に管理者 3 名の Google アカウントを追加する
+   - 管理者 3 名の Google アカウントは、システム管理者（`kodan1231@gmail.com`）がシステム管理の画面（`/system`）の「施設管理者」に追加し、「案内メールを送る」で知らせる
 3. 必要な設定が済むと、カレンダーの「初期設定が済んでいません」の表示が消える
