@@ -6,3 +6,6 @@ dist/
 
 # Google Cloud の画面のスクリーンショット（クライアントシークレットが写っている）
 OAuth.bmp
+
+# Claude Code の個人用の設定
+.claude/settings.local.json
