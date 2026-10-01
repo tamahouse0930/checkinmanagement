@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { ageOn, EMPTY_GUEST, type GuestFields, isValidBirthDate, missingFields, normalizeGuest } from "../../shared/guest";
+import { BirthDateSelect } from "../registration/BirthDateSelect";
 import { CountrySelect } from "../registration/CountrySelect";
 
 const MISSING_LABEL: Record<string, string> = {
@@ -58,10 +59,17 @@ export function GuestForm(props: {
             <option value="0">いいえ</option>
           </select>
         </label>
-        <label>
-          生年月日{age !== null && `（チェックイン日に ${age} 歳）`}
-          <input type="date" value={g.birthDate} min="1900-01-01" max={props.checkInDate} onChange={(e) => set("birthDate", e.target.value)} />
-        </label>
+        {/* ドラムロールの中を押したときに欄のボタンへ伝わらないよう、label ではなく div で囲む */}
+        <div className="field-group">
+          <span>生年月日{age !== null && `（チェックイン日に ${age} 歳）`}</span>
+          <BirthDateSelect
+            value={g.birthDate}
+            checkInDate={props.checkInDate}
+            lang="ja"
+            labels={{ year: "年", month: "月", day: "日", placeholder: "選択してください", ok: "決定", cancel: "キャンセル" }}
+            onChange={(v) => set("birthDate", v)}
+          />
+        </div>
       </div>
       <label>
         氏名
