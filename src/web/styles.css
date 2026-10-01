@@ -275,6 +275,16 @@ textarea {
   min-width: 0;
 }
 
+/*
+ * iPhone の Safari は、文字が 16px 未満の入力欄を押すと画面を拡大し、そのまま戻らない（画面ごとに倍率が変わって見える）。
+ * 入力欄の文字は 16px 以上にする。個別の指定（font: inherit など）より優先させるため !important を付ける
+ */
+input,
+select,
+textarea {
+  font-size: max(16px, 1em) !important;
+}
+
 .form label select,
 .guest-editor select {
   width: 100%;
