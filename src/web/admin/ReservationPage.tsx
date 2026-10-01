@@ -512,6 +512,12 @@ export function ReservationPage({ id }: { id: string }) {
               <dd>{r.reservationCode}</dd>
             </>
           )}
+          {r.phoneLast4 && (
+            <>
+              <dt>電話番号（下 4 桁）</dt>
+              <dd>{r.phoneLast4}</dd>
+            </>
+          )}
           {r.bookerName && (
             <>
               <dt>代表者名（手動登録）</dt>
@@ -661,7 +667,12 @@ export function ReservationPage({ id }: { id: string }) {
               保存
             </button>
           </div>
-          <p className="note">清掃のときに現地で変えた番号を入力してください。番号を変えると「送信済み」の印は外れます。</p>
+          <p className="note">
+            {r.phoneLast4
+              ? `初期値は予約の電話番号の下 4 桁（${r.phoneLast4}）です。`
+              : "電話番号の下 4 桁がない予約（Booking.com・手動登録など）のため、初期値はありません。"}
+            清掃のときに現地で別の番号にした場合は、その番号を入力してください。番号を変えると「送信済み」の印は外れます。
+          </p>
           {r.messages.code ? (
             <MessageBlock
               title="暗証番号の案内文"
@@ -672,7 +683,7 @@ export function ReservationPage({ id }: { id: string }) {
               onChanged={load}
             />
           ) : (
-            <p className="note">承認して暗証番号を保存すると、案内文をコピーできます。</p>
+            <p className="note">{r.keyboxCode ? "承認すると、案内文をコピーできます。" : "承認して暗証番号を保存すると、案内文をコピーできます。"}</p>
           )}
         </section>
       )}

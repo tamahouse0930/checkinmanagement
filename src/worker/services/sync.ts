@@ -59,13 +59,14 @@ export async function syncSource(db: Db, source: IcalSource, today: string): Pro
   const plan = planSync(source.channel, events, existing, today);
 
   const stmts: D1PreparedStatement[] = [];
+  // 暗証番号は、予約の電話番号の下 4 桁（Airbnb）を初期値にする。管理者が入力した番号は上書きしない（要件定義書 H-14）
   for (const ins of plan.inserts) {
     stmts.push(
       db
         .prepare(
           `INSERT INTO reservations (id, property_id, ical_source_id, channel, source, external_uid, reservation_code, phone_last4,
-             check_in_date, check_out_date, status, guest_token, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'ical', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             keybox_code, check_in_date, check_out_date, status, guest_token, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'ical', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           crypto.randomUUID(),
@@ -74,6 +75,7 @@ export async function syncSource(db: Db, source: IcalSource, today: string): Pro
           source.channel,
           ins.uid,
           ins.reservationCode,
+          ins.phoneLast4,
           ins.phoneLast4,
           ins.checkInDate,
           ins.checkOutDate,
@@ -89,10 +91,10 @@ export async function syncSource(db: Db, source: IcalSource, today: string): Pro
       db
         .prepare(
           `UPDATE reservations SET external_uid = ?, check_in_date = ?, check_out_date = ?, status = ?,
-             reservation_code = ?, phone_last4 = ?, guest_token = COALESCE(guest_token, ?), updated_at = ? WHERE id = ?`,
+             reservation_code = ?, phone_last4 = ?, keybox_code = COALESCE(keybox_code, ?), guest_token = COALESCE(guest_token, ?), updated_at = ? WHERE id = ?`,
         )
         // 以前アプリの中でキャンセルにして URL を消した予約が、予約として戻ってきた場合に備えて URL を作り直す
-        .bind(up.uid, up.checkInDate, up.checkOutDate, up.status, up.reservationCode, up.phoneLast4, randomToken(), now, up.id),
+        .bind(up.uid, up.checkInDate, up.checkOutDate, up.status, up.reservationCode, up.phoneLast4, up.phoneLast4, randomToken(), now, up.id),
     );
   }
   for (const row of plan.cancels) {
