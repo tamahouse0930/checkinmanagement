@@ -3,7 +3,7 @@ import type { SetupStatus, SetupStepKey } from "../../shared/api-types";
 import { SETUP_STEPS } from "../../shared/setup";
 import { api } from "../lib/api";
 import { EmailListSection } from "../account/common";
-import { BasicSection, DevicesSection, GoogleSection, IcalSection, type SettingsResponse } from "./SettingsPage";
+import { BasicSection, GoogleSection, IcalSection, type SettingsResponse } from "./SettingsPage";
 
 
 /**
@@ -80,7 +80,6 @@ export function SetupPage({ onPropertySaved }: { onPropertySaved: () => void }) 
       )}
       {step("google", <GoogleSection google={settings.google} />)}
       {step("ical", <IcalSection onChanged={loadStatus} />)}
-      {step("devices", <DevicesSection onChanged={loadStatus} />)}
     </div>
   );
 }

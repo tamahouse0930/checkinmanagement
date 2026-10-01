@@ -343,11 +343,16 @@ export function DevicesSection({ onChanged }: { onChanged?: () => void }) {
       </ul>
       <h3 className="sub-heading">新しいタブレットを登録する</h3>
       <p className="note">タブレットの名前（管理用。例: 玄関の iPad）を入れて「登録用のコードを発行」を押し、表示されたコードをタブレットで入力します。</p>
-      <div className="form inline ical-add">
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={50} placeholder="タブレットの名前（例: 玄関の iPad）" />
-        <button className="button" onClick={createPairing} disabled={!name.trim()}>
-          登録用のコードを発行
-        </button>
+      <div className="form">
+        <label>
+          タブレットの名前（管理用）
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={50} placeholder="例: 玄関の iPad" />
+        </label>
+        <div className="actions">
+          <button className="button primary" onClick={createPairing} disabled={!name.trim()}>
+            登録用のコードを発行
+          </button>
+        </div>
       </div>
       {pairing && (
         <div className="pairing">
@@ -383,7 +388,7 @@ export function SettingsPage({ me }: { me: { email: string } }) {
       <section className="card">
         <h2>初期設定</h2>
         <p className="note">
-          施設の基本情報、通知メールの宛先、Google との連携、予約の取り込み（iCal）、タブレットの登録は「初期設定」の画面にあります。後から変更するときも、そちらを使います。
+          施設の基本情報、通知メールの宛先、Google との連携、予約の取り込み（iCal）は「初期設定」の画面にあります。後から変更するときも、そちらを使います。
         </p>
         <div className="actions">
           <a
@@ -398,6 +403,8 @@ export function SettingsPage({ me }: { me: { email: string } }) {
           </a>
         </div>
       </section>
+      {/* タブレットは初期設定の時点で用意できているとは限らないため、初期設定から外して設定画面に置く */}
+      <DevicesSection />
       <TextsSection />
       <SystemStatusSection />
       <SessionsSection />

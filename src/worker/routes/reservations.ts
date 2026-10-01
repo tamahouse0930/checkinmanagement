@@ -21,7 +21,7 @@ import { getSettings, getText, PROPERTY_ID } from "../lib/settings";
 import { nowIso } from "../lib/time";
 import { deleteFile, downloadFile } from "../services/google/drive";
 import { countersStatement, type GuestRow, type ReservationRow, toView } from "../services/guests";
-import { deviceCountStatement, setupStatus } from "../services/setup";
+import { setupStatus } from "../services/setup";
 import { syncAll } from "../services/sync";
 import { isLang, LANGS, type Lang } from "../../shared/langs";
 import { renderTemplate } from "../../shared/templates";
@@ -146,7 +146,7 @@ reservationRoutes.get("/calendar", async (c) => {
   const today = jstNow().date;
   const db = c.var.db;
 
-  const [monthRows, upcomingRows, sources, devices] = await db.batch([
+  const [monthRows, upcomingRows, sources] = await db.batch([
     db
       .prepare(
         `SELECT ${SUMMARY_COLUMNS} FROM reservations
@@ -162,7 +162,6 @@ reservationRoutes.get("/calendar", async (c) => {
       )
       .bind(addDays(today, -7)),
     db.prepare("SELECT channel, last_error FROM ical_sources LIMIT 10"),
-    deviceCountStatement(db),
   ]);
 
   const settings = await getSettings(db);
@@ -190,7 +189,7 @@ reservationRoutes.get("/calendar", async (c) => {
     reservations: (monthRows.results as SummaryRow[]).map(toSummary),
     attention,
     alerts,
-    setupPending: setupStatus(settings, sources.results.length, (devices.results[0] as { n: number }).n).pending,
+    setupPending: setupStatus(settings, sources.results.length).pending,
   };
   return c.json(body);
 });

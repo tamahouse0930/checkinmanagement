@@ -6,7 +6,7 @@ export const SETUP_STEPS: { key: SetupStepKey; label: string }[] = [
   { key: "recipients", label: "通知メールの宛先" },
   { key: "google", label: "Google との連携" },
   { key: "ical", label: "予約の取り込み（iCal）" },
-  { key: "devices", label: "チェックイン用タブレットの登録" },];
+];
 
 export function setupLabel(key: SetupStepKey): string {
   return SETUP_STEPS.find((s) => s.key === key)?.label ?? key;

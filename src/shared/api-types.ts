@@ -29,7 +29,7 @@ export interface CalendarResponse {
 }
 
 /** 初期設定の項目（設計書 4.14） */
-export type SetupStepKey = "basic" | "recipients" | "google" | "ical" | "devices";
+export type SetupStepKey = "basic" | "recipients" | "google" | "ical";
 
 /** システムの状態（設計書 4.15）。システム管理者・施設管理者の両方に表示する。宿泊者の個人情報は含めない */
 export interface SystemStatus {
