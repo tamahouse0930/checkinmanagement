@@ -1,6 +1,7 @@
 import type { AccountMe } from "../../shared/api-types";
-import { AccountPending, logout, NoPermission, useAccount } from "../account/useAccount";
-import { navigate, usePathname } from "../lib/router";
+import { AdminHeader } from "../account/AdminHeader";
+import { AccountPending, NoPermission, useAccount } from "../account/useAccount";
+import { usePathname } from "../lib/router";
 import { useDocumentTitle } from "../lib/title";
 import { CalendarPage } from "./CalendarPage";
 import { LedgerPage, LedgerStayPage } from "./LedgerPage";
@@ -50,28 +51,7 @@ export function AdminApp() {
 
   return (
     <div className="admin">
-      <header className="admin-header">
-        <strong>{me.propertyName}</strong>
-        <nav>
-          {NAV.map((item) => (
-            <a
-              key={item.path}
-              href={item.path}
-              className={isActive(item.path, pathname) ? "active" : undefined}
-              onClick={(e) => {
-                e.preventDefault();
-                navigate(item.path);
-              }}
-            >
-              {item.label}
-            </a>
-          ))}
-          {me.roles.system && <a href="/system">システム管理</a>}
-        </nav>
-        <button className="link" onClick={logout} title={me.email}>
-          ログアウト
-        </button>
-      </header>
+      <AdminHeader me={me} current="facility" title={me.propertyName} nav={NAV} isActive={(path) => isActive(path, pathname)} />
       <main className="admin-main" key={pathname + location.search}>
         <AdminRoute pathname={pathname} me={me} onPropertySaved={account.reload} />
       </main>

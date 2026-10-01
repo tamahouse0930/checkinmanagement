@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import type { AuditLogRow } from "../../shared/api-types";
 import { EmailListSection, formatDate } from "../account/common";
 import { SessionsSection, SystemStatusSection } from "../account/sections";
-import { AccountPending, logout, NoPermission, useAccount } from "../account/useAccount";
+import { AdminHeader } from "../account/AdminHeader";
+import { AccountPending, NoPermission, useAccount } from "../account/useAccount";
 import { api } from "../lib/api";
-import { navigate, usePathname } from "../lib/router";
+import { usePathname } from "../lib/router";
 import { useDocumentTitle } from "../lib/title";
 
 /**
@@ -168,28 +169,7 @@ export function SystemApp() {
 
   return (
     <div className="admin">
-      <header className="admin-header">
-        <strong>システム管理</strong>
-        <nav>
-          {NAV.map((item) => (
-            <a
-              key={item.path}
-              href={item.path}
-              className={pathname === item.path ? "active" : undefined}
-              onClick={(e) => {
-                e.preventDefault();
-                navigate(item.path);
-              }}
-            >
-              {item.label}
-            </a>
-          ))}
-          {me.roles.facility && <a href="/admin">施設の管理画面</a>}
-        </nav>
-        <button className="link" onClick={logout} title={me.email}>
-          ログアウト
-        </button>
-      </header>
+      <AdminHeader me={me} current="system" title="システム管理" nav={NAV} isActive={(path) => path === pathname} />
       <main className="admin-main" key={pathname}>
         <SystemRoute pathname={pathname} />
       </main>

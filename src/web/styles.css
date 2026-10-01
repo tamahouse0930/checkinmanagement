@@ -63,21 +63,49 @@ h2 {
 }
 
 .admin-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
+  z-index: 10;
 }
 
+.admin-header-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+}
+
+/* 両方の権限を持つ人の画面の切り替え（設計書 4.15） */
+.admin-switch {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px 0;
+}
+
+.admin-switch a {
+  padding: 3px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.admin-switch a.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+
+/* 項目が多くても画面の外にはみ出さないよう、折り返す */
 .admin-header nav {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   flex: 1;
-  overflow-x: auto;
 }
 
 .admin-header nav a {
@@ -615,10 +643,10 @@ label.check.inline {
 }
 
 @media (max-width: 560px) {
-  .admin-header {
+  .admin-header-main {
     gap: 12px;
   }
-  .admin-header > strong {
+  .admin-header-main > strong {
     display: none;
   }
   .form.inline.keybox {
