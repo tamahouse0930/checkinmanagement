@@ -349,7 +349,15 @@ function GuestEditor(props: {
               <BirthDateSelect
                 value={g.birthDate}
                 checkInDate={checkInDate}
-                labels={{ year: t.birthYear, month: t.birthMonth, day: t.birthDay }}
+                lang={lang}
+                labels={{
+                  year: t.birthYear,
+                  month: t.birthMonth,
+                  day: t.birthDay,
+                  placeholder: t.select,
+                  ok: t.pickerOk,
+                  cancel: t.pickerCancel,
+                }}
                 onChange={(v) => set("birthDate", v)}
                 disabled={disabled}
               />

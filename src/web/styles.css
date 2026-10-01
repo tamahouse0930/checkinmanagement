@@ -824,11 +824,118 @@ label.check.inline {
   color: var(--primary-text);
 }
 
-/* 生年月日（年・月・日の選択欄を横に並べる） */
-.birth-date {
+/* 生年月日（欄を押すと、画面の下にドラムロールを出す） */
+.birth-date-field {
+  font: inherit;
+  font-size: max(16px, 1em);
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.birth-date-field .placeholder {
+  color: var(--muted);
+}
+
+.guest-editor .missing .birth-date-field {
+  border: 2px solid var(--danger);
+  background: #fff7f6;
+}
+
+.picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.picker-sheet {
+  width: 100%;
+  max-width: 480px;
+  background: var(--surface);
+  border-radius: 14px 14px 0 0;
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+.picker-actions {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.picker-actions .strong {
+  font-weight: bold;
+}
+
+.picker-heads,
+.picker-wheels {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr;
-  gap: 8px;
+  grid-template-columns: 1.4fr 1fr 1fr;
+}
+
+.picker-heads {
+  padding-top: 8px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.picker-wheels {
+  position: relative;
+}
+
+/* 5 行分の高さで、真ん中の行を選ぶ。上下 2 行分の余白で、端の値も真ん中まで回せる */
+.wheel {
+  height: 200px;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  padding: 80px 0;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent);
+}
+
+.wheel::-webkit-scrollbar {
+  display: none;
+}
+
+.wheel-item {
+  height: 40px;
+  line-height: 40px;
+  text-align: center;
+  scroll-snap-align: center;
+  font-size: 1.15rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.wheel-item.on {
+  color: var(--text);
+  font-weight: bold;
+}
+
+/* 選んでいる行の目印（真ん中の帯） */
+.picker-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 80px;
+  height: 40px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: rgba(47, 93, 80, 0.06);
+  pointer-events: none;
 }
 
 .photo-field {
