@@ -13,6 +13,9 @@
   color: var(--text);
   background: var(--bg);
   line-height: 1.6;
+  /* iPhone の Safari が、画面より広い部分の文字を自動で大きくするのを止める（画面ごとに文字の大きさが変わらないように） */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 * {
@@ -126,8 +129,13 @@ h2 {
   padding: 16px;
 }
 
+/*
+ * 列の幅は画面に合わせ、中身（名簿の表など）に合わせて広げない。広がるとページが画面より広くなり、
+ * iPhone ではその画面だけ縮小・文字の拡大が起きる。広い表は .table-wrap の中で横にスクロールさせる
+ */
 .stack {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
