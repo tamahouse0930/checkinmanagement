@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { diffDays, formatDateJa } from "../../shared/dates";
 import { CHANNEL_LABEL, type Channel } from "../../shared/progress";
+import { birthDateLabel } from "../../shared/guest";
 import { api } from "../lib/api";
 import { navigate } from "../lib/router";
 
@@ -20,6 +21,7 @@ interface RegisterGuest {
   occupation: string | null;
   contact: string | null;
   isUnder16: boolean;
+  birthDate: string | null;
   checkedInAt: string | null;
   idPhotoId: string | null;
 }
@@ -126,6 +128,7 @@ export function RegisterPrintPage() {
                   <tr>
                     <th>No.</th>
                     <th>氏名</th>
+                    <th>生年月日</th>
                     <th>国籍</th>
                     <th>旅券番号</th>
                     <th>住所</th>
@@ -138,10 +141,8 @@ export function RegisterPrintPage() {
                   {s.guests.map((g) => (
                     <tr key={g.seq}>
                       <td>{g.seq}</td>
-                      <td>
-                        {g.fullName}
-                        {g.isUnder16 && <small>（16歳未満）</small>}
-                      </td>
+                      <td>{g.fullName}</td>
+                      <td>{birthDateLabel(g.birthDate, s.checkInDate, g.isUnder16)}</td>
                       <td>{g.isJapanese ? "日本" : countryName(g.nationality)}</td>
                       <td>{g.isJapanese ? "" : g.passportNumber}</td>
                       <td>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RegistrationView } from "../../shared/api-types";
 import { diffDays } from "../../shared/dates";
-import { EMPTY_GUEST, type GuestFields, type GuestView, type MissingField, missingFields, normalizeGuest } from "../../shared/guest";
+import { EMPTY_GUEST, type GuestFields, type GuestView, isUnder16, type MissingField, missingFields, normalizeGuest } from "../../shared/guest";
 import { detectLang, isLang, LANG_NAME, LANGS, type Lang } from "../../shared/langs";
 import { fill, GUEST_TEXT, type GuestText } from "../i18n/guest";
 import { CountrySelect } from "./CountrySelect";
@@ -77,6 +77,7 @@ function guestLabel(g: GuestView | undefined, t: GuestText): string {
 const MISSING_KEY: Record<MissingField, keyof GuestText> = {
   isJapanese: "isJapanese",
   fullName: "fullName",
+  birthDate: "birthDate",
   addressCountry: "addressCountry",
   address: "address",
   occupation: "occupation",
@@ -168,11 +169,13 @@ function GuestEditor(props: {
   seq: number;
   guest: GuestView | undefined;
   representative: GuestView | undefined;
+  /** 16 歳未満かどうかは、チェックイン日の時点の年齢で決める */
+  checkInDate: string;
   readOnly: boolean;
   onSaved: () => Promise<void>;
   onBack: () => void;
 }) {
-  const { t, lang, api, seq, representative } = props;
+  const { t, lang, api, seq, representative, checkInDate } = props;
   const isCompanion = props.role === "companion";
   const [g, setG] = useState<GuestFields>(() => {
     const base = props.guest ? { ...props.guest } : { ...EMPTY_GUEST };
@@ -242,7 +245,8 @@ function GuestEditor(props: {
   const editor = useRef<HTMLElement>(null);
 
   const set = <K extends keyof GuestFields>(key: K, value: GuestFields[K]) => setG((prev) => ({ ...prev, [key]: value }));
-  const missing = missingFields(normalizeGuest(g));
+  const missing = missingFields(normalizeGuest(g), checkInDate);
+  const under16 = isUnder16(g.birthDate, checkInDate);
   // 同行者は本人の同意も必要（要件定義書 G-18）
   const problems: (MissingField | "consent")[] = [...missing, ...(isCompanion && !consent ? (["consent"] as const) : [])];
   /** 保存を押した後、足りない項目を赤く示す */
@@ -314,7 +318,7 @@ function GuestEditor(props: {
             <div className={`field ${bad("idPhoto") ?? ""}`}>
               <span className="label">{g.isJapanese ? t.idPhotoJapanese : t.idPhotoForeign}</span>
               {g.isJapanese && <p className="note">{t.myNumberNote}</p>}
-              {g.isJapanese && g.isUnder16 && <p className="note">{t.photoOptionalUnder16}</p>}
+              {g.isJapanese && under16 && <p className="note">{t.photoOptionalUnder16}</p>}
               <PhotoField
                 t={t}
                 api={api}
@@ -337,6 +341,18 @@ function GuestEditor(props: {
               {t.fullName}
               {!g.isJapanese && <small>{t.fullNameHintForeign}</small>}
               <input value={g.fullName} onChange={(e) => set("fullName", e.target.value)} maxLength={100} autoComplete="name" />
+            </label>
+
+            <label className={bad("birthDate")}>
+              {t.birthDate}
+              <input
+                type="date"
+                value={g.birthDate}
+                min="1900-01-01"
+                max={checkInDate}
+                onChange={(e) => set("birthDate", e.target.value)}
+                autoComplete="bday"
+              />
             </label>
 
             {!g.isJapanese && (
@@ -419,10 +435,6 @@ function GuestEditor(props: {
               </label>
             )}
 
-            <label className="check">
-              <input type="checkbox" checked={g.isUnder16} onChange={(e) => set("isUnder16", e.target.checked)} />
-              {t.under16}
-            </label>
 
             {isCompanion && (
               <label className={`check ${bad("consent") ?? ""}`}>
@@ -788,6 +800,7 @@ export function RegistrationApp({ role, token }: { role: "r" | "g"; token: strin
                 seq={view.companionSeq ?? 2}
                 guest={own}
                 representative={undefined}
+                checkInDate={view.checkInDate}
                 readOnly={companionLocked}
                 onSaved={reload}
                 onBack={() => {
@@ -841,6 +854,7 @@ export function RegistrationApp({ role, token }: { role: "r" | "g"; token: strin
                 seq={screen.seq}
                 guest={view.guests.find((g) => g.seq === screen.seq)}
                 representative={screen.seq > 1 ? representative : undefined}
+                checkInDate={view.checkInDate}
                 readOnly={view.guests.find((g) => g.seq === screen.seq)?.status === "approved"}
                 onSaved={reload}
                 onBack={() => {

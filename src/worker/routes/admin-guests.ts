@@ -4,7 +4,7 @@ import { EMPTY_GUEST, type GuestFields, normalizeGuest } from "../../shared/gues
 import type { AppEnv } from "../env";
 import { auditStatement } from "../lib/audit";
 import { nowIso } from "../lib/time";
-import { countersStatement, type GuestRow, passportCheckFor, type ReservationRow, toFields } from "../services/guests";
+import { countersStatement, type GuestRow, passportCheckFor, type ReservationRow, toFields, under16Value } from "../services/guests";
 import { deletePhotos, detectImageType, MAX_PHOTO_BYTES, renamePhotosForGuests, saveIdPhoto } from "../services/photos";
 import { guestPatchSchema } from "./registration";
 
@@ -27,12 +27,12 @@ async function loadGuest(c: Context<AppEnv>, guestId: string): Promise<{ guest: 
   return guest && reservation ? { guest, reservation } : null;
 }
 
-function fieldsStatement(c: Context<AppEnv>, guestId: string, fields: GuestFields, now: string) {
+function fieldsStatement(c: Context<AppEnv>, guest: GuestRow, checkInDate: string, fields: GuestFields, now: string) {
   const g = normalizeGuest(fields);
   return c.var.db
     .prepare(
       `UPDATE guests SET is_japanese = ?, full_name = ?, address_country = ?, address = ?, occupation = ?, contact = ?,
-         nationality = ?, passport_number = ?, is_under16 = ?, updated_at = ? WHERE id = ?`,
+         nationality = ?, passport_number = ?, is_under16 = ?, birth_date = ?, updated_at = ? WHERE id = ?`,
     )
     .bind(
       g.isJapanese === null ? null : g.isJapanese ? 1 : 0,
@@ -43,9 +43,10 @@ function fieldsStatement(c: Context<AppEnv>, guestId: string, fields: GuestField
       g.contact || null,
       g.nationality || null,
       g.passportNumber || null,
-      g.isUnder16 ? 1 : 0,
+      under16Value(g.birthDate, checkInDate, guest.is_under16),
+      g.birthDate || null,
       now,
-      guestId,
+      guest.id,
     );
 }
 
@@ -90,7 +91,7 @@ adminGuestRoutes.patch("/guests/:id", async (c) => {
   const db = c.var.db;
   const check = passportCheckFor(normalizeGuest(after), guest.passport_mrz_number, guest.passport_check !== null);
   await db.batch([
-    fieldsStatement(c, guest.id, after, now),
+    fieldsStatement(c, guest, reservation.check_in_date, after, now),
     db.prepare("UPDATE guests SET passport_check = ? WHERE id = ?").bind(check, guest.id),
     revisionStatement(c, guest, "update", before, normalizeGuest(after), typeof body.reason === "string" ? body.reason.slice(0, 500) : null),
     countersStatement(db, reservation.id, now),
@@ -186,8 +187,8 @@ adminGuestRoutes.post("/reservations/:id/guests", async (c) => {
     db
       .prepare(
         `INSERT INTO guests (id, reservation_id, seq, status, entered_by, is_japanese, full_name, address_country, address,
-           occupation, contact, nationality, passport_number, is_under16, approved_at, created_at, updated_at)
-         VALUES (?, ?, ?, 'approved', 'admin', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           occupation, contact, nationality, passport_number, is_under16, birth_date, approved_at, created_at, updated_at)
+         VALUES (?, ?, ?, 'approved', 'admin', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         guestId,
@@ -201,7 +202,8 @@ adminGuestRoutes.post("/reservations/:id/guests", async (c) => {
         g.contact || null,
         g.nationality || null,
         g.passportNumber || null,
-        g.isUnder16 ? 1 : 0,
+        under16Value(g.birthDate, r.check_in_date, 0),
+        g.birthDate || null,
         now,
         now,
         now,

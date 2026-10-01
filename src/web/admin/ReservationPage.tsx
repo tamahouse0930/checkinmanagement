@@ -3,7 +3,7 @@ import { resizeImage } from "../registration/photo";
 import { GuestForm } from "./GuestForm";
 import type { ReservationDetail } from "../../shared/api-types";
 import { diffDays, formatDateJa } from "../../shared/dates";
-import type { GuestView } from "../../shared/guest";
+import { birthDateLabel, type GuestView } from "../../shared/guest";
 import { LANG_NAME, LANGS, type Lang } from "../../shared/langs";
 import { CHANNEL_LABEL, PROGRESS_LABEL } from "../../shared/progress";
 import { api } from "../lib/api";
@@ -103,11 +103,13 @@ async function uploadAdminPhoto(guestId: string, file: File): Promise<void> {
 
 function GuestCard({
   g,
+  checkInDate,
   phoneLast4,
   editable,
   act,
 }: {
   g: GuestView;
+  checkInDate: string;
   phoneLast4: string | null;
   editable: boolean;
   act: (action: () => Promise<unknown>, done: string) => Promise<void>;
@@ -130,6 +132,7 @@ function GuestCard({
         </strong>
         <GuestForm
           initial={g}
+          checkInDate={checkInDate}
           submitLabel="保存"
           withReason
           onCancel={() => setEditing(false)}
@@ -193,8 +196,8 @@ function GuestCard({
               </small>
             )}
           </dd>
-          <dt>16 歳未満</dt>
-          <dd>{g.isUnder16 ? "はい" : "いいえ"}</dd>
+          <dt>生年月日</dt>
+          <dd>{birthDateLabel(g.birthDate, checkInDate, g.isUnder16)}</dd>
           <dt>入力</dt>
           <dd>
             {g.enteredBy === "self" ? `本人が入力${g.consented ? "（本人の同意あり）" : ""}` : g.enteredBy === "admin" ? "管理者が追加" : "代表者が入力"}
@@ -242,7 +245,15 @@ function GuestCard({
 }
 
 /** 管理者による宿泊者の追加（予約サイトのメッセージで情報を受け取った場合など） */
-function AddGuest({ reservationId, act }: { reservationId: string; act: (action: () => Promise<unknown>, done: string) => Promise<void> }) {
+function AddGuest({
+  reservationId,
+  checkInDate,
+  act,
+}: {
+  reservationId: string;
+  checkInDate: string;
+  act: (action: () => Promise<unknown>, done: string) => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
   if (!open) {
     return (
@@ -255,6 +266,7 @@ function AddGuest({ reservationId, act }: { reservationId: string; act: (action:
     <div className="guest-card">
       <strong>宿泊者の追加（承認済みとして登録します。身分証の写真は追加した後に「写真を差し替え」で登録してください）</strong>
       <GuestForm
+        checkInDate={checkInDate}
         submitLabel="追加"
         onCancel={() => setOpen(false)}
         onSubmit={async (fields) => {
@@ -589,12 +601,12 @@ export function ReservationPage({ id }: { id: string }) {
           {r.consentForCompanions && <p className="note">代表者が「同行者全員から同意を得ています」にチェックしています。</p>}
           <div className="guest-cards">
             {r.guests.map((g) => (
-              <GuestCard key={g.id} g={g} phoneLast4={r.phoneLast4} editable={r.status === "confirmed"} act={act} />
+              <GuestCard key={g.id} g={g} checkInDate={r.checkInDate} phoneLast4={r.phoneLast4} editable={r.status === "confirmed"} act={act} />
             ))}
           </div>
           {r.status === "confirmed" && (
             <div className="actions">
-              <AddGuest reservationId={r.id} act={act} />
+              <AddGuest reservationId={r.id} checkInDate={r.checkInDate} act={act} />
             </div>
           )}
           {canJudge ? (

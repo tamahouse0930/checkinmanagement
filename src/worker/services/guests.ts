@@ -1,4 +1,4 @@
-import { type EnteredBy, type GuestFields, type GuestStatus, type GuestView, missingFields, normalizeGuest, type PassportCheck } from "../../shared/guest";
+import { type EnteredBy, type GuestFields, type GuestStatus, type GuestView, isUnder16, missingFields, normalizeGuest, type PassportCheck } from "../../shared/guest";
 import { samePassportNumber } from "../../shared/mrz";
 import type { Channel, RegStatus, ReservationStatus, StayStatus } from "../../shared/progress";
 import type { Db } from "../lib/db";
@@ -61,6 +61,7 @@ export interface GuestRow {
   nationality: string | null;
   passport_number: string | null;
   is_under16: number;
+  birth_date: string | null;
   id_photo_id: string | null;
   passport_mrz_number: string | null;
   passport_check: PassportCheck | null;
@@ -80,7 +81,7 @@ export function toFields(row: GuestRow | null): GuestFields {
     contact: row?.contact ?? "",
     nationality: row?.nationality ?? "",
     passportNumber: row?.passport_number ?? "",
-    isUnder16: row?.is_under16 === 1,
+    birthDate: row?.birth_date ?? "",
     idPhotoId: row?.id_photo_id ?? null,
   };
 }
@@ -88,6 +89,7 @@ export function toFields(row: GuestRow | null): GuestFields {
 export function toView(row: GuestRow, origin: string): GuestView {
   return {
     ...toFields(row),
+    isUnder16: row.is_under16 === 1,
     id: row.id,
     seq: row.seq,
     status: row.status,
@@ -102,8 +104,8 @@ export function toView(row: GuestRow, origin: string): GuestView {
 }
 
 /** 入力済みかどうか。同行者が自分で入力した場合は本人の同意も必要（要件定義書 G-18） */
-export function statusFor(fields: GuestFields, needsOwnConsent: boolean, consented: boolean): "draft" | "ready" {
-  return missingFields(fields).length === 0 && (!needsOwnConsent || consented) ? "ready" : "draft";
+export function statusFor(fields: GuestFields, checkInDate: string, needsOwnConsent: boolean, consented: boolean): "draft" | "ready" {
+  return missingFields(fields, checkInDate).length === 0 && (!needsOwnConsent || consented) ? "ready" : "draft";
 }
 
 /**
@@ -116,10 +118,18 @@ export function passportCheckFor(fields: GuestFields, mrzNumber: string | null, 
   return ocrTried && fields.idPhotoId ? "unreadable" : null;
 }
 
+/**
+ * 16 歳未満かどうかを DB に保存する値。生年月日があればチェックイン日の時点の年齢から計算し、
+ * ない場合（生年月日を入れる前に登録された宿泊者）は今の値を残す
+ */
+export function under16Value(birthDate: string, checkInDate: string, current: number): number {
+  return birthDate ? (isUnder16(birthDate, checkInDate) ? 1 : 0) : current;
+}
+
 /** 1 人分の行を登録または更新する SQL（予約と番号で一意） */
 export function upsertGuestStatement(
   db: Db,
-  reservationId: string,
+  reservation: Pick<ReservationRow, "id" | "check_in_date">,
   seq: number,
   fields: GuestFields,
   status: GuestStatus,
@@ -132,20 +142,21 @@ export function upsertGuestStatement(
   return db
     .prepare(
       `INSERT INTO guests (id, reservation_id, seq, status, entered_by, is_japanese, full_name, address_country, address,
-         occupation, contact, nationality, passport_number, is_under16, id_photo_id, consent_at, passport_mrz_number,
+         occupation, contact, nationality, passport_number, is_under16, birth_date, id_photo_id, consent_at, passport_mrz_number,
          passport_check, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (reservation_id, seq) DO UPDATE SET status = excluded.status, entered_by = excluded.entered_by,
          is_japanese = excluded.is_japanese, full_name = excluded.full_name, address_country = excluded.address_country,
          address = excluded.address, occupation = excluded.occupation, contact = excluded.contact,
-         nationality = excluded.nationality, passport_number = excluded.passport_number, is_under16 = excluded.is_under16,
+         nationality = excluded.nationality, passport_number = excluded.passport_number, is_under16 = CASE WHEN excluded.birth_date IS NULL THEN guests.is_under16 ELSE excluded.is_under16 END,
+         birth_date = excluded.birth_date,
          id_photo_id = excluded.id_photo_id, consent_at = excluded.consent_at,
          passport_mrz_number = excluded.passport_mrz_number, passport_check = excluded.passport_check,
          updated_at = excluded.updated_at`,
     )
     .bind(
       crypto.randomUUID(),
-      reservationId,
+      reservation.id,
       seq,
       status,
       enteredBy,
@@ -157,7 +168,8 @@ export function upsertGuestStatement(
       g.contact || null,
       g.nationality || null,
       g.passportNumber || null,
-      g.isUnder16 ? 1 : 0,
+      under16Value(g.birthDate, reservation.check_in_date, 0),
+      g.birthDate || null,
       g.idPhotoId,
       consentAt,
       passport.mrzNumber,

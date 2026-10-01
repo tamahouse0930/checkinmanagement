@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
-import { EMPTY_GUEST, type GuestFields, missingFields, normalizeGuest } from "../../shared/guest";
+import { ageOn, EMPTY_GUEST, type GuestFields, isValidBirthDate, missingFields, normalizeGuest } from "../../shared/guest";
 import { CountrySelect } from "../registration/CountrySelect";
 
 const MISSING_LABEL: Record<string, string> = {
   isJapanese: "日本人かどうか",
   fullName: "氏名",
+  birthDate: "生年月日",
   addressCountry: "住所（国・地域）",
   address: "住所",
   occupation: "職業",
@@ -17,6 +18,8 @@ const MISSING_LABEL: Record<string, string> = {
 /** 管理者が宿泊者の項目を修正・追加するフォーム（要件定義書 H-15） */
 export function GuestForm(props: {
   initial?: GuestFields;
+  /** 16 歳未満かどうかは、チェックイン日の時点の年齢で決める */
+  checkInDate: string;
   submitLabel: string;
   withReason?: boolean;
   onSubmit: (fields: Omit<GuestFields, "idPhotoId">, reason: string) => Promise<void>;
@@ -28,7 +31,8 @@ export function GuestForm(props: {
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof GuestFields>(key: K, value: GuestFields[K]) => setG((prev) => ({ ...prev, [key]: value }));
   // 写真は別の操作で扱うので、ここでは写真以外の未入力だけを知らせる
-  const missing = missingFields(normalizeGuest({ ...g, idPhotoId: "x" }));
+  const missing = missingFields(normalizeGuest({ ...g, idPhotoId: "x" }), props.checkInDate);
+  const age = isValidBirthDate(g.birthDate, props.checkInDate) ? ageOn(g.birthDate, props.checkInDate) : null;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -54,9 +58,9 @@ export function GuestForm(props: {
             <option value="0">いいえ</option>
           </select>
         </label>
-        <label className="check inline-check">
-          <input type="checkbox" checked={g.isUnder16} onChange={(e) => set("isUnder16", e.target.checked)} />
-          16 歳未満
+        <label>
+          生年月日{age !== null && `（チェックイン日に ${age} 歳）`}
+          <input type="date" value={g.birthDate} min="1900-01-01" max={props.checkInDate} onChange={(e) => set("birthDate", e.target.value)} />
         </label>
       </div>
       <label>

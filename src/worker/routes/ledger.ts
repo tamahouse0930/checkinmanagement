@@ -84,6 +84,7 @@ interface StayGuestRow {
   occupation: string | null;
   contact: string | null;
   is_under16: number;
+  birth_date: string | null;
   checked_in_at: string | null;
   id_photo_id: string | null;
   kiosk_photo_id: string | null;
@@ -154,6 +155,7 @@ ledgerRoutes.get("/stays/:id", async (c) => {
       occupation: row.occupation,
       contact: row.contact,
       isUnder16: row.is_under16 === 1,
+      birthDate: row.birth_date,
       checkedInAt: row.checked_in_at,
       idPhoto: photoView(row.id_photo_id),
       kioskPhoto: photoView(row.kiosk_photo_id),
@@ -178,6 +180,7 @@ interface RegisterRow {
   occupation: string | null;
   contact: string | null;
   is_under16: number;
+  birth_date: string | null;
   checked_in_at: string | null;
   id_photo_id: string | null;
 }
@@ -196,7 +199,7 @@ ledgerRoutes.get("/register", async (c) => {
       .prepare(
         `SELECT r.id AS reservation_id, r.check_in_date, r.check_out_date, r.channel, r.reservation_code, r.checked_out_at,
            g.seq, g.full_name, g.is_japanese, g.nationality, g.passport_number, g.address_country, g.address,
-           g.occupation, g.contact, g.is_under16, g.checked_in_at, g.id_photo_id
+           g.occupation, g.contact, g.is_under16, g.birth_date, g.checked_in_at, g.id_photo_id
          FROM reservations r JOIN guests g ON g.reservation_id = r.id
          WHERE r.check_out_date >= ? AND r.check_in_date <= ? AND r.is_test = 0 AND r.status = 'confirmed'
            AND g.status = 'approved' AND (? = 0 OR g.checked_in_at IS NOT NULL)
@@ -239,6 +242,7 @@ ledgerRoutes.get("/register", async (c) => {
       occupation: r.occupation,
       contact: r.contact,
       isUnder16: r.is_under16 === 1,
+      birthDate: r.birth_date,
       checkedInAt: r.checked_in_at,
       idPhotoId: r.id_photo_id,
     });
@@ -266,6 +270,7 @@ interface RegistryRow {
   occupation: string | null;
   contact: string | null;
   is_under16: number;
+  birth_date: string | null;
   checked_in_at: string | null;
   id_file: string | null;
   kiosk_file: string | null;
@@ -295,7 +300,7 @@ ledgerRoutes.get("/registry.csv", async (c) => {
       .prepare(
         `SELECT r.check_in_date, r.check_out_date, r.channel, r.reservation_code, r.checked_out_at,
            g.seq, g.full_name, g.is_japanese, g.nationality, g.passport_number, g.address_country, g.address,
-           g.occupation, g.contact, g.is_under16, g.checked_in_at,
+           g.occupation, g.contact, g.is_under16, g.birth_date, g.checked_in_at,
            (SELECT file_name FROM photos WHERE id = g.id_photo_id) AS id_file,
            (SELECT file_name FROM photos WHERE id = g.kiosk_photo_id) AS kiosk_file
          FROM reservations r JOIN guests g ON g.reservation_id = r.id
@@ -313,6 +318,7 @@ ledgerRoutes.get("/registry.csv", async (c) => {
     "予約コード",
     "番号",
     "氏名",
+    "生年月日",
     "日本人",
     "国籍",
     "旅券番号",
@@ -336,6 +342,7 @@ ledgerRoutes.get("/registry.csv", async (c) => {
         r.reservation_code,
         r.seq,
         r.full_name,
+        r.birth_date,
         r.is_japanese === null ? "" : r.is_japanese ? "はい" : "いいえ",
         r.nationality,
         r.passport_number,

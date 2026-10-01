@@ -325,7 +325,8 @@ CREATE TABLE guests (
   contact           TEXT,                   -- 電話番号またはメールアドレス
   nationality       TEXT,                   -- ISO 3166-1 alpha-2。日本人は 'JP'
   passport_number   TEXT,
-  is_under16        INTEGER NOT NULL DEFAULT 0,
+  is_under16        INTEGER NOT NULL DEFAULT 0,  -- 保存したときに生年月日とチェックイン日から計算する（生年月日がない既存の行は今の値を残す）
+  birth_date        TEXT,                   -- 生年月日（YYYY-MM-DD）。0009 で追加
   id_photo_id       TEXT REFERENCES photos(id),  -- 身分証の写真
   passport_mrz_number TEXT,                 -- 写真から読み取った番号（G-16）
   passport_check    TEXT CHECK (passport_check IN ('match', 'mismatch', 'unreadable')),
@@ -564,7 +565,7 @@ flowchart TD
    | — | パスポート番号（同上） |
    | 住所・連絡先（2 人目以降は「代表者と同じ」のチェックで写せる。チェックの初期値は外す） | 住所・連絡先（同左） |
    | 職業 | 職業 |
-   | 16 歳未満かどうか | 16 歳未満かどうか |
+   | 生年月日（16 歳未満かどうかは、チェックイン日の時点の年齢から自動で決める） | 生年月日（同左） |
 
    写真の撮影を先にすることで、パスポートから読み取った値を初期値として使える
 

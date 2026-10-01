@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { addDays, diffDays, formatDateJa, jstNow, monthRange } from "../../shared/dates";
 import { CHANNEL_LABEL, type Channel } from "../../shared/progress";
+import { birthDateLabel } from "../../shared/guest";
 import { api } from "../lib/api";
 import { navigate } from "../lib/router";
 
@@ -42,6 +43,7 @@ interface StayGuest {
   occupation: string | null;
   contact: string | null;
   isUnder16: boolean;
+  birthDate: string | null;
   checkedInAt: string | null;
   idPhoto: PhotoInfo | null;
   kioskPhoto: PhotoInfo | null;
@@ -372,8 +374,8 @@ export function LedgerStayPage({ id }: { id: string }) {
                   <dd>{g.occupation ?? "—"}</dd>
                   <dt>連絡先</dt>
                   <dd>{g.contact ?? "—"}</dd>
-                  <dt>16 歳未満</dt>
-                  <dd>{g.isUnder16 ? "はい" : "いいえ"}</dd>
+                  <dt>生年月日</dt>
+                  <dd>{birthDateLabel(g.birthDate, stay.checkInDate, g.isUnder16)}</dd>
                   <dt>チェックイン</dt>
                   <dd>{formatTime(g.checkedInAt)}</dd>
                 </dl>

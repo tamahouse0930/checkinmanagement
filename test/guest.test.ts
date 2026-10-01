@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_GUEST, type GuestFields, missingFields, normalizeGuest } from "../src/shared/guest";
+import { ageOn, birthDateLabel, EMPTY_GUEST, type GuestFields, isUnder16, missingFields, normalizeGuest } from "../src/shared/guest";
 import { detectLang } from "../src/shared/langs";
 import { DEFAULT_TEXTS, renderTemplate } from "../src/shared/templates";
 import { deleteAfterFor, detectImageType, photoFileName } from "../src/worker/services/photos";
@@ -18,10 +18,14 @@ describe("3 年後の削除の境目（要件定義書 D-01）", () => {
   });
 });
 
+/** チェックイン日（年齢はこの日の時点で数える） */
+const CHECK_IN = "2026-10-03";
+
 const japanese: GuestFields = {
   ...EMPTY_GUEST,
   isJapanese: true,
   fullName: "山田 太郎",
+  birthDate: "1990-04-11",
   addressCountry: "JP",
   address: "東京都多摩市",
   occupation: "会社員",
@@ -33,6 +37,7 @@ const foreign: GuestFields = {
   ...EMPTY_GUEST,
   isJapanese: false,
   fullName: "KIM Minji",
+  birthDate: "1995-12-01",
   addressCountry: "KR",
   address: "Seoul",
   occupation: "Designer",
@@ -42,34 +47,70 @@ const foreign: GuestFields = {
   idPhotoId: "p2",
 };
 
+/** チェックイン日に 15 歳（16 歳の誕生日の前日） */
+const AGE15 = "2010-10-04";
+
 describe("名簿の入力チェック（要件定義書 6 章）", () => {
   it("日本人・日本人以外とも、必須項目がそろえば入力済み", () => {
-    expect(missingFields(japanese)).toEqual([]);
-    expect(missingFields(foreign)).toEqual([]);
+    expect(missingFields(japanese, CHECK_IN)).toEqual([]);
+    expect(missingFields(foreign, CHECK_IN)).toEqual([]);
   });
 
   it("日本人かどうかが未回答なら、それだけを求める", () => {
-    expect(missingFields(EMPTY_GUEST)).toEqual(["isJapanese"]);
+    expect(missingFields(EMPTY_GUEST, CHECK_IN)).toEqual(["isJapanese"]);
   });
 
   it("日本人以外は国籍とパスポート番号が必須（16 歳未満も）", () => {
-    expect(missingFields({ ...foreign, nationality: "", passportNumber: "" })).toEqual(["nationality", "passportNumber"]);
-    expect(missingFields({ ...foreign, isUnder16: true, idPhotoId: null })).toEqual(["idPhoto"]);
+    expect(missingFields({ ...foreign, nationality: "", passportNumber: "" }, CHECK_IN)).toEqual(["nationality", "passportNumber"]);
+    expect(missingFields({ ...foreign, birthDate: AGE15, idPhotoId: null }, CHECK_IN)).toEqual(["idPhoto"]);
   });
 
   it("パスポート番号は英数字 6〜12 文字", () => {
-    expect(missingFields({ ...foreign, passportNumber: "AB12" })).toEqual(["passportNumber"]);
-    expect(missingFields({ ...foreign, passportNumber: "M1234-5678" })).toEqual(["passportNumber"]);
+    expect(missingFields({ ...foreign, passportNumber: "AB12" }, CHECK_IN)).toEqual(["passportNumber"]);
+    expect(missingFields({ ...foreign, passportNumber: "M1234-5678" }, CHECK_IN)).toEqual(["passportNumber"]);
   });
 
-  it("16 歳未満の日本人は身分証の写真を省略できる", () => {
-    expect(missingFields({ ...japanese, idPhotoId: null })).toEqual(["idPhoto"]);
-    expect(missingFields({ ...japanese, idPhotoId: null, isUnder16: true })).toEqual([]);
+  it("生年月日は必須。存在しない日付・チェックイン日より後・120 年より前は受け付けない", () => {
+    expect(missingFields({ ...japanese, birthDate: "" }, CHECK_IN)).toEqual(["birthDate"]);
+    expect(missingFields({ ...japanese, birthDate: "1990-02-30" }, CHECK_IN)).toEqual(["birthDate"]);
+    expect(missingFields({ ...japanese, birthDate: "2026-10-04" }, CHECK_IN)).toEqual(["birthDate"]);
+    expect(missingFields({ ...japanese, birthDate: "1900-01-01" }, CHECK_IN)).toEqual(["birthDate"]);
+    expect(missingFields({ ...japanese, birthDate: CHECK_IN }, CHECK_IN)).toEqual([]);
+  });
+
+  it("16 歳未満（チェックイン日の時点）の日本人は身分証の写真を省略できる", () => {
+    expect(missingFields({ ...japanese, idPhotoId: null }, CHECK_IN)).toEqual(["idPhoto"]);
+    expect(missingFields({ ...japanese, idPhotoId: null, birthDate: AGE15 }, CHECK_IN)).toEqual([]);
+    // 16 歳の誕生日がチェックイン日なら 16 歳なので省略できない
+    expect(missingFields({ ...japanese, idPhotoId: null, birthDate: "2010-10-03" }, CHECK_IN)).toEqual(["idPhoto"]);
   });
 
   it("正規化: 日本人の国籍は JP、パスポート番号は大文字で空白なし", () => {
     expect(normalizeGuest({ ...japanese, nationality: "", passportNumber: "x" })).toMatchObject({ nationality: "JP", passportNumber: "" });
     expect(normalizeGuest({ ...foreign, passportNumber: " m1234 5678 " }).passportNumber).toBe("M12345678");
+  });
+});
+
+describe("年齢と 16 歳未満の判定", () => {
+  it("満年齢は誕生日の当日に 1 つ増える", () => {
+    expect(ageOn("1990-04-11", "2026-04-10")).toBe(35);
+    expect(ageOn("1990-04-11", "2026-04-11")).toBe(36);
+    expect(ageOn("2000-02-29", "2026-02-28")).toBe(25);
+    expect(ageOn("2000-02-29", "2026-03-01")).toBe(26);
+  });
+
+  it("16 歳未満はチェックイン日の時点の年齢で決める。生年月日が正しくなければ false", () => {
+    expect(isUnder16(AGE15, CHECK_IN)).toBe(true);
+    expect(isUnder16("2010-10-03", CHECK_IN)).toBe(false);
+    expect(isUnder16("", CHECK_IN)).toBe(false);
+    expect(isUnder16("2027-01-01", CHECK_IN)).toBe(false);
+  });
+
+  it("管理画面の表示。生年月日がない既存の宿泊者は、保存されている 16 歳未満の値を添える", () => {
+    expect(birthDateLabel("1990-04-11", CHECK_IN, false)).toBe("1990/04/11（36 歳）");
+    expect(birthDateLabel(AGE15, CHECK_IN, true)).toBe("2010/10/04（15 歳・16 歳未満）");
+    expect(birthDateLabel(null, CHECK_IN, true)).toBe("未入力（16 歳未満）");
+    expect(birthDateLabel("", CHECK_IN, false)).toBe("未入力");
   });
 });
 

@@ -114,7 +114,8 @@ export const guestPatchSchema = z
     contact: z.string().max(200),
     nationality: z.string().refine((v) => v === "" || isCountryCode(v)),
     passportNumber: z.string().max(30),
-    isUnder16: z.boolean(),
+    /** 生年月日（YYYY-MM-DD）。未入力は空文字 */
+    birthDate: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/),
     consent: z.boolean(),
     /** 写真（MRZ）から読み取った旅券番号。読み取れなかったときは null、読み取りを試していなければ送らない */
     passportMrzNumber: z.string().max(20).nullable(),
@@ -148,9 +149,9 @@ async function saveGuest(c: Context<AppEnv>, seq: number, body: unknown, asCompa
   const now = nowIso();
   const consentAt = asCompanion ? (consent === true ? now : consent === false ? null : row?.consent_at ?? null) : row?.consent_at ?? null;
   const enteredBy = asCompanion ? "self" : "representative";
-  const status = statusFor(fields, asCompanion, consentAt !== null);
+  const status = statusFor(fields, r.check_in_date, asCompanion, consentAt !== null);
 
-  const stmts: D1PreparedStatement[] = [upsertGuestStatement(db, r.id, seq, fields, status, enteredBy, consentAt, now, passport)];
+  const stmts: D1PreparedStatement[] = [upsertGuestStatement(db, r, seq, fields, status, enteredBy, consentAt, now, passport)];
   if (r.reg_status === "none") {
     stmts.push(db.prepare("UPDATE reservations SET reg_status = 'in_progress' WHERE id = ?").bind(r.id));
   } else if (r.reg_status === "submitted") {
@@ -185,7 +186,7 @@ async function uploadPhoto(c: Context<AppEnv>, seq: number) {
   }
   if (!row) {
     await db.batch([
-      upsertGuestStatement(db, r.id, seq, toFields(null), "draft", c.var.companionSeq === null ? "representative" : "self", null, now),
+      upsertGuestStatement(db, r, seq, toFields(null), "draft", c.var.companionSeq === null ? "representative" : "self", null, now),
       ...(r.reg_status === "none" ? [db.prepare("UPDATE reservations SET reg_status = 'in_progress' WHERE id = ?").bind(r.id)] : []),
     ]);
     guests = await loadGuests(db, r.id);
@@ -203,7 +204,7 @@ async function uploadPhoto(c: Context<AppEnv>, seq: number) {
   // 写真がそろったことで入力済みになる場合があるため、状態を計算し直す
   const fields = { ...toFields(row), idPhotoId: photoId };
   const asCompanion = c.var.companionSeq !== null;
-  const status = statusFor(fields, asCompanion, row.consent_at !== null);
+  const status = statusFor(fields, r.check_in_date, asCompanion, row.consent_at !== null);
   await db.batch([
     db.prepare("UPDATE guests SET status = ?, updated_at = ? WHERE id = ? AND status IN ('draft', 'ready')").bind(status, now, row.id),
     countersStatement(db, r.id, now),
@@ -308,7 +309,7 @@ representativeRoutes.post("/guests/:seq/link", async (c) => {
   if (row?.entry_token) return c.json({ url: `${new URL(c.req.url).origin}/g/${row.entry_token}` });
   const token = randomToken();
   const stmts: D1PreparedStatement[] = [];
-  if (!row) stmts.push(upsertGuestStatement(db, r.id, seq, toFields(null), "draft", "self", null, now));
+  if (!row) stmts.push(upsertGuestStatement(db, r, seq, toFields(null), "draft", "self", null, now));
   stmts.push(db.prepare("UPDATE guests SET entry_token = ? WHERE reservation_id = ? AND seq = ?").bind(token, r.id, seq));
   if (r.reg_status === "none") stmts.push(db.prepare("UPDATE reservations SET reg_status = 'in_progress' WHERE id = ?").bind(r.id));
   stmts.push(countersStatement(db, r.id, now));
