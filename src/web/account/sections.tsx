@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import type { SystemStatus } from "../../shared/api-types";
 import { jstNow } from "../../shared/dates";
 import { api } from "../lib/api";
+import { describeUserAgent } from "../../shared/user-agent";
 import { formatDate, Message, useMessage } from "./common";
 
 /** 施設の管理画面とシステム管理の画面の両方に出すセクション（設計書 4.15） */
@@ -10,6 +11,7 @@ interface SessionRow {
   id: string;
   email: string;
   user_agent: string | null;
+  created_at: string;
   last_seen_at: string;
   current: boolean;
 }
@@ -36,11 +38,11 @@ export function SessionsSection() {
       <ul className="list">
         {rows.map((r) => (
           <li key={r.id}>
-            <span>
+            <span title={r.user_agent ?? undefined}>
               {r.email}
               <small>
                 {" "}
-                {r.user_agent ?? "不明な端末"} ／ 最終利用 {formatDate(r.last_seen_at)}
+                {describeUserAgent(r.user_agent)} ／ ログイン {formatDate(r.created_at)} ／ 最終利用 {formatDate(r.last_seen_at)}
               </small>
             </span>
             {r.current ? (

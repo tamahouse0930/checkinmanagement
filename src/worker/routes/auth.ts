@@ -4,7 +4,8 @@ import { safeAdminPath } from "../../shared/setup";
 import type { AppEnv } from "../env";
 import { auditStatement } from "../lib/audit";
 import { base64UrlDecode, base64UrlEncode, encryptText, randomToken, signValue, utf8Decode, utf8Encode, verifySignedValue } from "../lib/crypto";
-import { encodeSession, newSessionPayload } from "../lib/session";
+import { revokeSessionsStatement } from "../lib/revoke";
+import { decodeSession, encodeSession, newSessionPayload, SESSION_COOKIE } from "../lib/session";
 import { type AdminRoles, getSettings, invalidateSettings } from "../lib/settings";
 import { nowIso } from "../lib/time";
 import { readAdminSession, setSessionCookie } from "../middleware/admin";
@@ -124,14 +125,34 @@ authRoutes.get("/callback", async (c) => {
     }
     const sid = randomToken();
     const payload = newSessionPayload(sid, claims.email);
+
+    // 同じ端末の古いログインはログアウトさせる（ログイン中の端末に同じ端末が並ばないように）。
+    // 同じアカウント・同じ User-Agent のものと、このブラウザに残っていた古いログインの Cookie のもの
+    const oldCookie = await decodeSession(c.env.SESSION_SECRET, getCookie(c, SESSION_COOKIE));
+    const sameDevice = await db.all<{ id: string; expires_at: string }>(
+      db
+        .prepare("SELECT id, expires_at FROM admin_sessions WHERE email = ? AND user_agent IS ? AND expires_at > ? LIMIT 20")
+        .bind(claims.email, userAgent, nowIso()),
+    );
+    const old = new Map(sameDevice.map((r) => [r.id, Date.parse(r.expires_at)]));
+    if (oldCookie) old.set(oldCookie.sid, oldCookie.exp);
+    const replaced = [...old].map(([oldSid, exp]) => ({ sid: oldSid, exp }));
+
     await db.batch([
+      ...(replaced.length > 0
+        ? [
+            db.prepare(`DELETE FROM admin_sessions WHERE id IN (${replaced.map(() => "?").join(",")})`).bind(...replaced.map((r) => r.sid)),
+            revokeSessionsStatement(db, settings.property.revoked_sessions, replaced),
+          ]
+        : []),
       db
         .prepare(
           "INSERT INTO admin_sessions (id, email, user_agent, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind(sid, claims.email, userAgent, nowIso(), nowIso(), new Date(payload.exp).toISOString()),
-      auditStatement(db, `admin:${claims.email}`, "login"),
+      auditStatement(db, `admin:${claims.email}`, "login", replaced.length > 0 ? `同じ端末の古いログイン ${replaced.length} 件をログアウト` : undefined),
     ]);
+    if (replaced.length > 0) invalidateSettings();
     setSessionCookie(c, await encodeSession(c.env.SESSION_SECRET, payload));
     c.executionCtx.waitUntil(
       notifyHost(c.env, db, {

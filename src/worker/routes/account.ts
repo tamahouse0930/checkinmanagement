@@ -4,7 +4,8 @@ import type { SystemStatus } from "../../shared/api-types";
 import type { AppEnv } from "../env";
 import { auditStatement } from "../lib/audit";
 import { SESSION_COOKIE } from "../lib/session";
-import { getSettings, invalidateSettings, parseRevoked, PROPERTY_ID, type RevokedSession } from "../lib/settings";
+import { revokeSessionsStatement } from "../lib/revoke";
+import { getSettings, invalidateSettings } from "../lib/settings";
 import { nowIso } from "../lib/time";
 import { requireLogin } from "../middleware/admin";
 
@@ -14,19 +15,6 @@ import { requireLogin } from "../middleware/admin";
  */
 export const accountRoutes = new Hono<AppEnv>();
 accountRoutes.use("*", requireLogin);
-
-/**
- * セッションを取り消す。取り消したセッション ID は設定の行に持ち、キャッシュと照合する（設計書 7.1）。
- * 有効期限を過ぎたものはここで取り除く。
- */
-function revokeStatement(c: { var: AppEnv["Variables"] }, current: string, add: RevokedSession) {
-  const now = Date.now();
-  const list = parseRevoked(current).filter((r) => r.exp > now && r.sid !== add.sid);
-  list.push(add);
-  return c.var.db
-    .prepare("UPDATE properties SET revoked_sessions = ?, updated_at = ? WHERE id = ?")
-    .bind(JSON.stringify(list), nowIso(), PROPERTY_ID);
-}
 
 accountRoutes.get("/me", async (c) => {
   const { property } = await getSettings(c.var.db);
@@ -40,7 +28,7 @@ accountRoutes.post("/logout", async (c) => {
   const admin = c.var.admin;
   await db.batch([
     db.prepare("DELETE FROM admin_sessions WHERE id = ?").bind(admin.sid),
-    revokeStatement(c, property.revoked_sessions, { sid: admin.sid, exp: admin.exp }),
+    revokeSessionsStatement(db, property.revoked_sessions, [{ sid: admin.sid, exp: admin.exp }]),
   ]);
   invalidateSettings();
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
@@ -71,7 +59,7 @@ accountRoutes.delete("/sessions/:id", async (c) => {
   if (!row) return c.json({ error: { code: "not_found", message: "端末が見つかりません" } }, 404);
   await db.batch([
     db.prepare("DELETE FROM admin_sessions WHERE id = ?").bind(id),
-    revokeStatement(c, property.revoked_sessions, { sid: id, exp: Date.parse(row.expires_at) }),
+    revokeSessionsStatement(db, property.revoked_sessions, [{ sid: id, exp: Date.parse(row.expires_at) }]),
     auditStatement(db, `admin:${c.var.admin.email}`, "revoke_session", id),
   ]);
   invalidateSettings();
