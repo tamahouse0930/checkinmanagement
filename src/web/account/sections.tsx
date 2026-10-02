@@ -63,7 +63,8 @@ export function SessionsSection() {
 /** 毎日の定期処理（scheduled.ts）。実行してよい時刻を過ぎても今日の実行がなければ「未実行」と表示する */
 const JOBS = [
   { job: "daily_morning", label: "予約の取り込み・テスト予約の削除", hour: 5 },
-  { job: "daily_cleanup", label: "保存期間を過ぎたデータの削除・写真の突き合わせ", hour: 6 },
+  { job: "daily_cleanup", label: "保存期間を過ぎたデータの削除", hour: 6 },
+  { job: "daily_reconcile", label: "写真の突き合わせ", hour: 7 },
   { job: "evening_unregistered", label: "前日未登録の通知", hour: 18 },
 ];
 

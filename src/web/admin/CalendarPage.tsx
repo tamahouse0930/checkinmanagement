@@ -92,7 +92,7 @@ export function CalendarPage() {
     try {
       const res = await api<SyncResponse>("/api/admin/reservations/sync", { method: "POST" });
       if (res.results.length === 0) {
-        setSyncMessage("iCal の URL が登録されていません（設定画面から登録してください）");
+        setSyncMessage("iCal の URL が登録されていません（初期設定の画面から登録してください）");
       } else {
         setSyncMessage(
           res.results
@@ -101,7 +101,10 @@ export function CalendarPage() {
                 ? `${CHANNEL_LABEL[r.channel]}: ${r.error}`
                 : `${CHANNEL_LABEL[r.channel]}: 追加 ${r.added}件・更新 ${r.updated}件・キャンセル ${r.cancelled}件`,
             )
-            .join(" ／ "),
+            .join(" ／ ") +
+            (res.results.some((r) => r.remaining > 0)
+              ? `（変更が多いため、残り ${res.results.reduce((n, r) => n + r.remaining, 0)} 件は次の取り込みで反映します。もう一度「最新化」を押すと続きを取り込みます）`
+              : ""),
         );
       }
       await load(month);

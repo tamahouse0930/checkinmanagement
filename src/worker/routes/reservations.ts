@@ -204,6 +204,7 @@ reservationRoutes.post("/reservations/sync", async (c) => {
       updated: r.updated,
       cancelled: r.cancelled,
       error: r.error,
+      remaining: r.remaining,
     })),
   };
   return c.json(body);

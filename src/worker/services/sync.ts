@@ -21,7 +21,16 @@ export interface SourceResult {
   cancelled: number;
   error: string | null;
   cancelledDates: string[];
+  /** 1 回に反映する件数の上限を超えたため、次の取り込みに回した件数 */
+  remaining: number;
 }
+
+/**
+ * 1 回の取り込み（すべての取得元の合計）で反映する予約の件数の上限。1 件ごとに 1 文を実行するため、
+ * D1 の 1 回の処理の問い合わせの上限（50 件。一括実行の文も 1 件ずつ数える）に、設定の読み込みや通知などの分を残して収める。
+ * 残りは次の取り込みで反映する（取り込みのたびに差分を計算し直すので、何回か取り込めばそろう）
+ */
+export const MAX_SYNC_CHANGES = 25;
 
 async function fetchIcal(url: string): Promise<string> {
   const res = await fetch(url, {
@@ -32,9 +41,12 @@ async function fetchIcal(url: string): Promise<string> {
   return res.text();
 }
 
-/** 1 つの取得元を取り込む。D1 への問い合わせは「読み取り 1 回 ＋ 書き込み 1 回（一括）」 */
-export async function syncSource(db: Db, source: IcalSource, today: string): Promise<SourceResult> {
-  const result: SourceResult = { channel: source.channel, added: 0, updated: 0, cancelled: 0, error: null, cancelledDates: [] };
+/**
+ * 1 つの取得元を取り込む。D1 への問い合わせは「読み取り 1 回 ＋ 書き込み 1 回（一括）」。
+ * 反映する件数は budget の残りまで（残りは次の取り込み）
+ */
+export async function syncSource(db: Db, source: IcalSource, today: string, budget: { left: number }): Promise<SourceResult> {
+  const result: SourceResult = { channel: source.channel, added: 0, updated: 0, cancelled: 0, error: null, cancelledDates: [], remaining: 0 };
   const now = nowIso();
 
   let text: string;
@@ -56,7 +68,16 @@ export async function syncSource(db: Db, source: IcalSource, today: string): Pro
       )
       .bind(today, source.id),
   );
-  const plan = planSync(source.channel, events, existing, today);
+  const planned = planSync(source.channel, events, existing, today);
+  // 上限を超えた分は次の取り込みに回す（新しい予約 → 変更 → キャンセルの順に反映する）
+  const total = planned.inserts.length + planned.updates.length + planned.cancels.length;
+  const take = <T,>(list: T[]): T[] => {
+    const part = list.slice(0, Math.max(0, budget.left));
+    budget.left -= part.length;
+    return part;
+  };
+  const plan = { inserts: take(planned.inserts), updates: take(planned.updates), cancels: take(planned.cancels) };
+  result.remaining = total - plan.inserts.length - plan.updates.length - plan.cancels.length;
 
   const stmts: D1PreparedStatement[] = [];
   // 暗証番号は、予約の電話番号の下 4 桁（Airbnb）を初期値にする。管理者が入力した番号は上書きしない（要件定義書 H-14）
@@ -120,7 +141,10 @@ export async function syncAll(env: Env, db: Db): Promise<SourceResult[]> {
   const today = jstNow().date;
   const sources = await db.all<IcalSource>(db.prepare("SELECT id, channel, url FROM ical_sources LIMIT 10"));
   const results: SourceResult[] = [];
-  for (const source of sources) results.push(await syncSource(db, source, today));
+  const budget = { left: MAX_SYNC_CHANGES };
+  for (const source of sources) results.push(await syncSource(db, source, today, budget));
+  const remaining = results.reduce((n, r) => n + r.remaining, 0);
+  if (remaining > 0) console.log(JSON.stringify({ event: "sync_deferred", remaining }));
 
   const lines: string[] = [];
   for (const r of results) {

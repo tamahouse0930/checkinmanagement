@@ -112,5 +112,6 @@ export interface RegistrationView {
 }
 
 export interface SyncResponse {
-  results: { channel: Channel; added: number; updated: number; cancelled: number; error: string | null }[];
+  /** remaining: 1 回に反映する件数の上限を超えたため、次の取り込みに回した件数 */
+  results: { channel: Channel; added: number; updated: number; cancelled: number; error: string | null; remaining: number }[];
 }

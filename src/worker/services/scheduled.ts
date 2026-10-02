@@ -3,9 +3,8 @@ import type { Env } from "../env";
 import { Db } from "../lib/db";
 import { getSettings } from "../lib/settings";
 import { DAY_MS, nowIso } from "../lib/time";
-import { deleteFile } from "./google/drive";
 import { notifyHost } from "./notify";
-import { purgeExpired, reconcilePhotos } from "./retention";
+import { DRIVE_DELETE_BUDGET, type DriveBudget, purgeExpired, purgeHousekeeping, reconcilePhotos, removeFromDrive } from "./retention";
 import { syncAll } from "./sync";
 
 /** 1 日 1 回の処理を、その日にまだ実行していなければ実行済みとして記録し true を返す（設計書 4.11） */
@@ -16,7 +15,8 @@ async function claimDailyJob(db: Db, job: string, date: string): Promise<boolean
 
 /**
  * 作成から 7 日を過ぎたテスト予約を、名簿・写真（Google ドライブのフォルダ）ごと削除する（設計書 4.9）。
- * 部分索引 idx_reservations_test だけを使う。外部へのリクエストの上限に収まるよう、1 回に 20 件まで
+ * 部分索引 idx_reservations_test だけを使う。外部へのリクエストの上限に収まるよう、ドライブの削除は 1 回に
+ * DRIVE_DELETE_BUDGET 件まで。ドライブから消せたものだけを消す（残りは翌日）
  */
 async function purgeTestReservations(env: Env, db: Db): Promise<void> {
   const cutoff = new Date(Date.now() - 7 * DAY_MS).toISOString();
@@ -24,10 +24,13 @@ async function purgeTestReservations(env: Env, db: Db): Promise<void> {
     db.prepare("SELECT id, drive_folder_id FROM reservations WHERE is_test = 1 AND created_at < ? LIMIT 20").bind(cutoff),
   );
   if (rows.length === 0) return;
+  const budget: DriveBudget = { left: DRIVE_DELETE_BUDGET };
+  const done: string[] = [];
   for (const r of rows) {
-    if (r.drive_folder_id) await deleteFile(env, db, r.drive_folder_id).catch(() => undefined);
+    if (await removeFromDrive(env, db, r.drive_folder_id, budget)) done.push(r.id);
   }
-  const ids = rows.map((r) => r.id);
+  if (done.length === 0) return;
+  const ids = done;
   const marks = ids.map(() => "?").join(",");
   await db.batch([
     db.prepare(`DELETE FROM guests WHERE reservation_id IN (${marks})`).bind(...ids),
@@ -101,17 +104,18 @@ export async function runScheduled(env: Env, origin: string | null = null): Prom
   const db = new Db(env.DB);
   const now = jstNow();
   try {
+    // 毎日の処理は、1 回の実行で 1 つだけ行う（15 分ごとの実行で順に片付く）。1 回の処理の上限
+    // （外部へのリクエスト 50 件、D1 の問い合わせ 50 件）に、それぞれ収めるため。
+    // 取り込み（5 時以降）→ 保存期間を過ぎた名簿・写真の削除（6 時以降）→ 写真の突き合わせ（7 時以降）→ 前日未登録の通知（18 時以降）
     if (now.hour >= 5 && (await claimDailyJob(db, "daily_morning", now.date))) {
       await syncAll(env, db);
       await purgeTestReservations(env, db);
-    }
-    // 3 年を過ぎた名簿・写真の削除と写真の突き合わせは、取り込みと別の実行（6 時以降）で行う。
-    // 1 回の処理で外部へのリクエストは 50 件までという制限に収めるため
-    if (now.hour >= 6 && (await claimDailyJob(db, "daily_cleanup", now.date))) {
+    } else if (now.hour >= 6 && (await claimDailyJob(db, "daily_cleanup", now.date))) {
       await purgeExpired(env, db);
+      await purgeHousekeeping(db);
+    } else if (now.hour >= 7 && (await claimDailyJob(db, "daily_reconcile", now.date))) {
       await reconcilePhotos(env, db).catch((e) => console.error(JSON.stringify({ event: "reconcile_failed", message: String(e) })));
-    }
-    if (now.hour >= 18 && (await claimDailyJob(db, "evening_unregistered", now.date))) {
+    } else if (now.hour >= 18 && (await claimDailyJob(db, "evening_unregistered", now.date))) {
       await notifyUnregistered(env, db, origin);
     }
     await notifyOverdueCheckouts(env, db, origin);

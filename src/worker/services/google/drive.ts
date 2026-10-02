@@ -128,7 +128,7 @@ export async function deleteFile(env: Env, db: Db, fileId: string): Promise<void
  * このアプリが作った写真のファイル ID の一覧（フォルダを除く）。権限が drive.file なので、
  * 管理者が自分で置いた他のファイルは含まれない。1 回で最大 1,000 件、最大 5 回まで取得する
  */
-export async function listAppFileIds(env: Env, db: Db): Promise<Set<string>> {
+export async function listAppFileIds(env: Env, db: Db): Promise<{ ids: Set<string>; complete: boolean }> {
   const token = await getGoogleAccessToken(env, db);
   const ids = new Set<string>();
   let pageToken: string | undefined;
@@ -145,7 +145,8 @@ export async function listAppFileIds(env: Env, db: Db): Promise<Set<string>> {
     pageToken = body.nextPageToken;
     if (!pageToken) break;
   }
-  return ids;
+  // 5 回で取り切れなかったら（5,000 件を超えたら）、一覧は途中まで
+  return { ids, complete: !pageToken };
 }
 
 /**
