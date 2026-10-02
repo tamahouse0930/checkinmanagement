@@ -40,7 +40,6 @@ interface NoticeRow {
   id: string;
   check_in_date: string;
   check_out_date: string;
-  display_name: string | null;
 }
 
 /** チェックアウト予定時刻を過ぎてもチェックアウトされていない予約を通知する（予約ごとに 1 回。要件定義書 5.5） */
@@ -51,7 +50,7 @@ async function notifyOverdueCheckouts(env: Env, db: Db, origin: string | null): 
   const rows = await db.all<NoticeRow>(
     db
       .prepare(
-        `SELECT id, check_in_date, check_out_date, display_name FROM reservations
+        `SELECT id, check_in_date, check_out_date FROM reservations
          WHERE check_out_date >= ? AND check_out_date <= ? AND stay_status = 'in_house' AND is_test = 0
            AND notified_overdue_at IS NULL LIMIT 10`,
       )
@@ -67,7 +66,7 @@ async function notifyOverdueCheckouts(env: Env, db: Db, origin: string | null): 
     text: [
       "チェックアウトの予定時刻を過ぎても、タブレットでチェックアウトされていない予約があります。状況を確認してください。",
       "",
-      ...due.map((r) => `・${formatDateJa(r.check_in_date)}〜${formatDateJa(r.check_out_date)} ${r.display_name ?? ""}${origin ? ` ${origin}/admin/reservations/${r.id}` : ""}`),
+      ...due.map((r) => `・${formatDateJa(r.check_in_date)}〜${formatDateJa(r.check_out_date)}${origin ? ` ${origin}/admin/reservations/${r.id}` : ""}`),
     ].join("\n"),
   });
 }
@@ -78,7 +77,7 @@ async function notifyUnregistered(env: Env, db: Db, origin: string | null): Prom
   const rows = await db.all<NoticeRow>(
     db
       .prepare(
-        `SELECT id, check_in_date, check_out_date, display_name FROM reservations
+        `SELECT id, check_in_date, check_out_date FROM reservations
          WHERE check_out_date > ? AND check_in_date = ? AND status = 'confirmed' AND is_test = 0
            AND reg_status IN ('none', 'in_progress', 'rejected') AND notified_unregistered_at IS NULL LIMIT 10`,
       )
@@ -93,7 +92,7 @@ async function notifyUnregistered(env: Env, db: Db, origin: string | null): Prom
     text: [
       "予約サイトのメッセージで、宿泊者の登録をお願いしてください。",
       "",
-      ...rows.map((r) => `・${formatDateJa(r.check_in_date)}〜${formatDateJa(r.check_out_date)} ${r.display_name ?? ""}${origin ? ` ${origin}/admin/reservations/${r.id}` : ""}`),
+      ...rows.map((r) => `・${formatDateJa(r.check_in_date)}〜${formatDateJa(r.check_out_date)}${origin ? ` ${origin}/admin/reservations/${r.id}` : ""}`),
     ].join("\n"),
   });
 }

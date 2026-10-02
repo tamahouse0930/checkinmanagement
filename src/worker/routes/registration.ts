@@ -344,7 +344,15 @@ representativeRoutes.post("/submit", async (c) => {
     .object({ consent: z.literal(true), consentForCompanions: z.boolean().optional(), lang: z.string() })
     .safeParse(await c.req.json());
   if (!parsed.success) return error(c, 400, "bad_request", "consent_required");
-  if (r.reg_status === "submitted") return c.json({ ok: true });
+  if (r.reg_status === "submitted") {
+    // 送信済みのまま発行し直した URL から、何も直さずに送信した場合も、URL は使えなくする
+    const db = c.var.db;
+    await db.batch([
+      db.prepare("UPDATE reservations SET guest_token = NULL WHERE id = ?").bind(r.id),
+      db.prepare("UPDATE guests SET entry_token = NULL WHERE reservation_id = ?").bind(r.id),
+    ]);
+    return c.json({ ok: true });
+  }
 
   const db = c.var.db;
   const guests = await loadGuests(db, r.id);
@@ -368,6 +376,10 @@ representativeRoutes.post("/submit", async (c) => {
                reject_reason = NULL, lang = ?, updated_at = ? WHERE id = ?`,
           )
           .bind(now, now, enteredByRep ? 1 : 0, lang, now, r.id),
+    // 送信したら、代表者と同行者の URL はすべて使えなくする（URL が他人の手に渡っても名簿を見られないように）。
+    // 修正や同行者の追加が必要なときは、管理者が新しい URL を発行する（差し戻しのときは自動で発行する）
+    db.prepare("UPDATE reservations SET guest_token = NULL WHERE id = ?").bind(r.id),
+    db.prepare("UPDATE guests SET entry_token = NULL WHERE reservation_id = ?").bind(r.id),
     countersStatement(db, r.id, now),
   ]);
 
@@ -375,17 +387,16 @@ representativeRoutes.post("/submit", async (c) => {
     console.error(JSON.stringify({ event: "photo_rename_failed", message: String(e) })),
   );
   const origin = new URL(c.req.url).origin;
-  // パスポート番号が写真と違う人（見逃さないよう、通知にも書く。ゲストの画面には出さない）
-  const mismatch = pending.filter((g) => g.passport_check === "mismatch").map((g) => g.full_name ?? `${g.seq}人目`);
+  // パスポート番号が写真と違う人の数（見逃さないよう、通知にも書く。氏名は書かない。ゲストの画面には出さない）
+  const mismatch = pending.filter((g) => g.passport_check === "mismatch").length;
   c.executionCtx.waitUntil(
     notifyHost(c.env, db, {
       isTest: r.is_test === 1,
       subject: isAddition ? "同行者の追加がありました（承認をお願いします）" : "宿泊者の登録がありました（承認をお願いします）",
       text: [
         `宿泊日: ${formatDateJa(r.check_in_date)} 〜 ${formatDateJa(r.check_out_date)}`,
-        `代表者: ${guests.find((g) => g.seq === 1)?.full_name ?? "（未入力）"}`,
         `人数: ${r.guest_total}人${isAddition ? `（追加 ${pending.length}人）` : ""}`,
-        ...(mismatch.length > 0 ? ["", `※ パスポート番号が写真から読み取った番号と違う人がいます: ${mismatch.join("、")}`] : []),
+        ...(mismatch > 0 ? ["", `※ パスポート番号が写真から読み取った番号と違う人が ${mismatch} 人います。管理画面で確認してください`] : []),
         "",
         `確認: ${origin}/admin/reservations/${r.id}`,
       ].join("\n"),

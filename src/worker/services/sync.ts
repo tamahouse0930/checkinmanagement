@@ -91,10 +91,13 @@ export async function syncSource(db: Db, source: IcalSource, today: string): Pro
       db
         .prepare(
           `UPDATE reservations SET external_uid = ?, check_in_date = ?, check_out_date = ?, status = ?,
-             reservation_code = ?, phone_last4 = ?, keybox_code = COALESCE(keybox_code, ?), guest_token = COALESCE(guest_token, ?), updated_at = ? WHERE id = ?`,
+             reservation_code = ?, phone_last4 = ?, keybox_code = COALESCE(keybox_code, ?),
+             guest_token = CASE WHEN status = 'cancelled' AND ? = 'confirmed' THEN COALESCE(guest_token, ?) ELSE guest_token END,
+             updated_at = ? WHERE id = ?`,
         )
-        // 以前アプリの中でキャンセルにして URL を消した予約が、予約として戻ってきた場合に備えて URL を作り直す
-        .bind(up.uid, up.checkInDate, up.checkOutDate, up.status, up.reservationCode, up.phoneLast4, up.phoneLast4, randomToken(), now, up.id),
+        // キャンセルから予約に戻った場合だけ、URL がなければ作り直す。宿泊者が送信して URL を使えなくした予約では作り直さない
+        // （CASE の status は更新前の値）
+        .bind(up.uid, up.checkInDate, up.checkOutDate, up.status, up.reservationCode, up.phoneLast4, up.phoneLast4, up.status, randomToken(), now, up.id),
     );
   }
   for (const row of plan.cancels) {

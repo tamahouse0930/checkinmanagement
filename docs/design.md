@@ -274,7 +274,7 @@ CREATE TABLE reservations (
   check_out_date    TEXT NOT NULL,
   status            TEXT NOT NULL CHECK (status IN ('confirmed', 'cancelled', 'blocked')),
   status_locked     INTEGER NOT NULL DEFAULT 0,          -- 管理者がブロック等に変えたら 1（取り込みで上書きしない）
-  guest_token       TEXT UNIQUE,                         -- 代表者用のトークン（3 年後の削除で NULL）
+  guest_token       TEXT UNIQUE,                         -- 代表者用のトークン。宿泊者が送信した時点で NULL（URL を無効にする）。差し戻し・修正用の URL の発行で作り直す。3 年後の削除でも NULL
   reg_status        TEXT NOT NULL DEFAULT 'none'
                     CHECK (reg_status IN ('none', 'in_progress', 'submitted', 'rejected', 'approved')),
   stay_status       TEXT NOT NULL DEFAULT 'not_arrived'
@@ -485,7 +485,7 @@ TAMAHOUSE宿泊者写真/
 2. `VEVENT` ごとに `UID`・`DTSTART`・`DTEND`・`SUMMARY`・`DESCRIPTION` を取り出す
 3. 予約かブロックかを判定する。Airbnb は `SUMMARY` が `Reserved` なら予約、`Airbnb (Not available)` ならブロック。Booking.com は区別できないため、すべて予約として取り込む
 4. Airbnb は `DESCRIPTION` から予約コード（予約 URL の末尾）と電話番号の下 4 桁を取り出す
-5. `(ical_source_id, external_uid)` で登録または更新する。新規登録のときに `guest_token` を発行する。`status_locked = 1` の予約は状態を上書きしない
+5. `(ical_source_id, external_uid)` で登録または更新する。新規登録のときに `guest_token` を発行する。更新のときは、キャンセルから予約に戻った場合だけ、`guest_token` がなければ作り直す（宿泊者が送信して URL を無効にした予約で、URL を復活させないため）。`status_locked = 1` の予約は状態を上書きしない
 6. 取得が成功し、イベントが 1 件以上あった場合に限り、この取得元の今後の予約のうち今回含まれなかったものを `cancelled` にして管理者に通知する
 
 ### 4.2 手動登録（R-06、H-03）
@@ -635,7 +635,7 @@ flowchart LR
 |---|---|
 | 修正 | 氏名・住所などの項目を修正する。承認済みの人も修正できる。変更前と変更後を `guest_revisions` に記録する |
 | 写真の差し替え | 身分証の写真を差し替える。古い写真は削除する |
-| 削除 | 来なかった人などを名簿から削除する。理由の入力を必須にする。名簿の行と写真はすぐに削除し、`guest_revisions` には氏名と理由だけを残す |
+| 削除 | 来なかった人などを名簿から削除する（チェックインした人は削除できない）。理由の入力を必須にする。泊まっていない人には保存の義務がないため、名簿の行・写真・その人の過去の修正の記録はすぐに削除し、`guest_revisions` には何人目だったかと理由だけを残す（氏名は残さない。要件定義書 D-03） |
 | 追加 | 管理者が宿泊者を追加し、そのまま `approved` にできる（予約サイトのメッセージで情報を受け取った場合など） |
 
 ゲスト側の API は、`approved` の宿泊者への変更と削除をすべて拒否する（S-09）。
@@ -781,6 +781,8 @@ Cron Trigger は 1 本（`*/15 * * * *`、15 分ごと）だけとし、日本�
 削除した件数を操作ログに記録する。
 
 キャンセルされた予約に途中保存の写真が残っている場合は、キャンセルから 7 日後に削除する（宿泊していないため、3 年間保存する対象ではない）。
+
+キャンセルされずに誰もチェックインしなかった予約（泊まらなかった予約）は、チェックアウト日の翌日の定期処理で、名簿・写真・修正の記録を削除する（当日の朝に消すと、タブレットを使わずに泊まっている人の名簿まで消えるおそれがあるため）。管理画面でチェックアウトを記録した予約（`stay_status = 'checked_out'`）は、泊まったものとして扱い削除しない。操作ログには `purge_no_show` として件数を残す。
 
 Workers の無料プランでは、1 回の処理で外部へのリクエストは 50 件までのため、ドライブのファイルの削除は 1 回の実行で 40 件までとし、残りは次の実行（15 分後）に回す。
 

@@ -297,7 +297,10 @@ reservationRoutes.post("/reservations/:id/reject", async (c) => {
   await db.batch([
     // 送信済み（未承認）の人を入力済みに戻し、ゲストが修正できるようにする。承認済みの人はそのまま
     db.prepare("UPDATE guests SET status = 'ready', updated_at = ? WHERE reservation_id = ? AND status = 'submitted'").bind(now, id),
-    db.prepare("UPDATE reservations SET reg_status = 'rejected', reject_reason = ? WHERE id = ?").bind(parsed.data.reason, id),
+    // 送信した時点で URL は使えなくなっているので、修正用の新しい URL を発行する（差し戻しの案内文に入る）
+    db
+      .prepare("UPDATE reservations SET reg_status = 'rejected', reject_reason = ?, guest_token = ? WHERE id = ?")
+      .bind(parsed.data.reason, randomToken(), id),
     countersStatement(db, id, now),
     auditStatement(db, `admin:${c.var.admin.email}`, "reject", id),
   ]);

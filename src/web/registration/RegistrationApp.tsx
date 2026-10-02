@@ -693,6 +693,8 @@ export function RegistrationApp({ role, token }: { role: "r" | "g"; token: strin
   const [screen, setScreen] = useState<Screen>({ kind: "list" });
   /** 同行者が、完了した後に「修正する」を押したとき */
   const [companionEditing, setCompanionEditing] = useState(false);
+  /** 送信が終わった（この URL はもう使えないため、読み直さずに完了の画面を出す） */
+  const [submitted, setSubmitted] = useState(false);
   const t = GUEST_TEXT[lang];
 
   const setLang = (l: Lang) => {
@@ -752,6 +754,21 @@ export function RegistrationApp({ role, token }: { role: "r" | "g"; token: strin
         {header}
         <main className="reg-main">
           <p className="note">{t.loading}</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (submitted) {
+    return (
+      <div className="reg">
+        {header}
+        <main className="reg-main">
+          <section className="card done-card">
+            <div className="done-icon">✓</div>
+            <p className="done-title">{t.submittedTitle}</p>
+            <p>{t.submittedClosed}</p>
+          </section>
         </main>
       </div>
     );
@@ -845,7 +862,8 @@ export function RegistrationApp({ role, token }: { role: "r" | "g"; token: strin
                   lang={lang}
                   onEdit={(seq) => setScreen({ kind: "edit", seq })}
                   onSubmitted={async () => {
-                    await reload();
+                    // 送信すると URL は使えなくなるので、読み直さずに完了の画面にする
+                    setSubmitted(true);
                     window.scrollTo(0, 0);
                   }}
                 />

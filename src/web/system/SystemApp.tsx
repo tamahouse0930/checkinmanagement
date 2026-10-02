@@ -57,6 +57,10 @@ const ACTION_LABEL: Record<string, string> = {
   export_csv: "名簿の CSV を出力",
   kiosk_checkin: "チェックイン（タブレット）",
   kiosk_checkout: "チェックアウト（タブレット）",
+  purge_expired: "保存期間（3 年）を過ぎた名簿を削除",
+  purge_cancelled: "キャンセルされた予約の名簿を削除",
+  purge_no_show: "泊まらなかった予約の名簿を削除",
+  purge_photos: "削除予定日を過ぎた写真を削除",
 };
 
 function actorLabel(actor: string): string {

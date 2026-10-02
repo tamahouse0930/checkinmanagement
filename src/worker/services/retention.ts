@@ -79,7 +79,22 @@ export async function purgeExpired(env: Env, db: Db): Promise<void> {
   );
   await purgeReservations(env, db, cancelled, "purge_cancelled", false);
 
-  // 3. 削除予定日を過ぎた写真が個別に残っていれば消す（索引 idx_photos_delete で探す）
+  // 3. 泊まらなかった予約（チェックアウト日を過ぎても誰もチェックインしなかった予約）。宿泊していないので保存の義務がない。
+  //    当日の朝に消すと、タブレットを使わずに泊まっている人の名簿まで消えるおそれがあるため、チェックアウト日の翌日に消す。
+  //    管理画面でチェックアウトを記録した予約（stay_status が checked_out）は泊まったものとして扱い、消さない
+  const noShows = await db.all<Target>(
+    db
+      .prepare(
+        `SELECT id, drive_folder_id FROM reservations
+         WHERE check_out_date < ? AND check_out_date > ? AND status = 'confirmed' AND stay_status = 'not_arrived'
+           AND first_checkin_at IS NULL AND guest_checked_in = 0
+           AND (guest_total > 0 OR drive_folder_id IS NOT NULL) LIMIT ?`,
+      )
+      .bind(today, retentionCutoff(today), BATCH),
+  );
+  await purgeReservations(env, db, noShows, "purge_no_show", false);
+
+  // 4. 削除予定日を過ぎた写真が個別に残っていれば消す（索引 idx_photos_delete で探す）
   const photos = await db.all<{ id: string; guest_id: string; drive_file_id: string }>(
     db.prepare("SELECT id, guest_id, drive_file_id FROM photos WHERE delete_after <= ? LIMIT ?").bind(today, BATCH),
   );

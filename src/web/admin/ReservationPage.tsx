@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { resizeImage } from "../registration/photo";
 import { GuestForm } from "./GuestForm";
 import type { ReservationDetail } from "../../shared/api-types";
-import { diffDays, formatDateJa } from "../../shared/dates";
+import { diffDays, formatDateJa, jstNow } from "../../shared/dates";
 import { birthDateLabel, type GuestView } from "../../shared/guest";
 import { LANG_NAME, LANGS, type Lang } from "../../shared/langs";
 import { CHANNEL_LABEL, PROGRESS_LABEL } from "../../shared/progress";
@@ -444,6 +444,9 @@ export function ReservationPage({ id }: { id: string }) {
   const canJudge = r.regStatus === "submitted" || (r.regStatus === "approved" && r.guestPending > 0);
   const mismatchNames = r.guests.filter((g) => g.passportCheck === "mismatch").map((g) => `${g.seq}. ${g.fullName || "（未入力）"}`);
 
+  const reissue = () =>
+    act(() => api(`/api/admin/reservations/${id}/token`, { method: "POST" }), "修正用の URL を発行しました。案内文をコピーして送ってください");
+
   const regenerate = () => {
     if (!confirm("URL を作り直しますか？ 今の URL は使えなくなります。")) return;
     act(() => api(`/api/admin/reservations/${id}/token`, { method: "POST" }), "URL を作り直しました");
@@ -572,6 +575,21 @@ export function ReservationPage({ id }: { id: string }) {
 
       {message && <p className="notice">{message}</p>}
       {error && <p className="alert">{error}</p>}
+
+      {r.status === "confirmed" && !r.guestUrl && r.regStatus !== "none" && r.checkOutDate >= jstNow().date && (
+        <section className="card">
+          <h2>① 宿泊者入力画面の URL を送る</h2>
+          {/* 宿泊者が送信すると URL は使えなくなる（URL が他人の手に渡っても名簿を見られないように） */}
+          <p className="note">
+            宿泊者が送信したため、URL は使えなくなっています。修正や同行者の追加が必要なときは、修正用の URL を発行して送ってください（差し戻すと自動で発行します）。
+          </p>
+          <div className="actions">
+            <button className="button primary" onClick={reissue}>
+              修正用の URL を発行
+            </button>
+          </div>
+        </section>
+      )}
 
       {r.status === "confirmed" && r.guestUrl && (
         <section className="card">

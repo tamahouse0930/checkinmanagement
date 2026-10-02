@@ -155,7 +155,10 @@ adminGuestRoutes.delete("/guests/:id", async (c) => {
     db.prepare("UPDATE guests SET seq = -(seq - 1) WHERE reservation_id = ? AND seq > ?").bind(reservation.id, guest.seq),
     db.prepare("UPDATE guests SET seq = -seq WHERE reservation_id = ? AND seq < 0").bind(reservation.id),
     db.prepare("UPDATE reservations SET guest_total = MAX(guest_total - 1, 1) WHERE id = ?").bind(reservation.id),
-    revisionStatement(c, guest, "delete", { seq: guest.seq, fullName: guest.full_name }, null, parsed.data.reason),
+    // 削除できるのはチェックインしていない（泊まっていない）人だけで、保存の義務がない。
+    // 修正の記録に残っている内容も消し、削除の記録には何人目だったかと理由だけを残す（要件定義書 D-03）
+    db.prepare("DELETE FROM guest_revisions WHERE guest_id = ?").bind(guest.id),
+    revisionStatement(c, guest, "delete", { seq: guest.seq }, null, parsed.data.reason),
     countersStatement(db, reservation.id, now),
     auditStatement(db, `admin:${c.var.admin.email}`, "delete_guest", guest.id),
   ]);

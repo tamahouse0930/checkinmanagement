@@ -259,7 +259,6 @@ kioskRoutes.post("/reservations/:id/checkout", async (c) => {
         subject: "チェックアウトしました（清掃を始められます）",
         text: [
           `宿泊日: ${formatDateJa(r.check_in_date)} 〜 ${formatDateJa(r.check_out_date)}`,
-          `代表者: ${r.display_name ?? ""}`,
           "",
           "清掃のときに、キーボックスの暗証番号を次の予約用に変えてください。",
           `確認: ${origin}/admin/reservations/${r.id}`,
