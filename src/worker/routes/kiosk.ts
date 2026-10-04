@@ -11,6 +11,7 @@ import { DAY_MS, nowIso } from "../lib/time";
 import { readAdminSession } from "../middleware/admin";
 import { countersStatement, type ReservationRow } from "../services/guests";
 import { notifyHost } from "../services/notify";
+import { notifyKioskRegistration } from "./registration";
 import { detectImageType, MAX_PHOTO_BYTES, saveKioskPhoto } from "../services/photos";
 
 /** 玄関タブレットの API（設計書 4.6、5.2） */
@@ -255,8 +256,10 @@ kioskRoutes.get("/walkin", async (c) => {
 });
 
 /**
- * タブレットで登録を始める。宿泊者入力画面の URL のトークンを返し、タブレットの中で入力画面を開く。
- * スマホで途中まで入力していれば、同じトークン（同じ入力）の続きから始める。送信したら自動で承認する印を付ける
+ * タブレットで登録を始める（要件定義書 T-05）。宿泊者入力画面の API のトークンを返し、タブレットの中で 1 人ずつ入力する。
+ * スマホで途中まで入力していれば、同じトークン（同じ入力）の続きから始める。
+ * スマホで送信済み（承認待ち）の人は、本人が来ているのでここで承認し、そのままチェックインの一覧に出す。
+ * pending: まだ登録が済んでいない枠があるか（なければ、タブレットはチェックインの一覧に戻る）
  */
 kioskRoutes.post("/walkin/:id", async (c) => {
   const id = c.req.param("id");
@@ -265,11 +268,34 @@ kioskRoutes.post("/walkin/:id", async (c) => {
   const target = rows.find((r) => r.id === id);
   if (!target) return forbidden(c);
   const token = target.guest_token ?? randomToken();
+  const now = nowIso();
+  const before = await db.first<ReservationRow>(db.prepare("SELECT * FROM reservations WHERE id = ?").bind(id));
+  if (!before) return forbidden(c);
+  const approving = before.guest_pending > 0;
   await db.batch([
-    db.prepare("UPDATE reservations SET guest_token = ?, kiosk_registration = 1, updated_at = ? WHERE id = ?").bind(token, nowIso(), id),
+    db.prepare("UPDATE guests SET status = 'approved', approved_at = ?, updated_at = ? WHERE reservation_id = ? AND status = 'submitted'").bind(now, now, id),
+    db
+      .prepare(
+        `UPDATE reservations SET guest_token = ?, updated_at = ?,
+           reg_status = CASE WHEN reg_status = 'submitted' THEN 'approved' ELSE reg_status END,
+           approved_at = CASE WHEN reg_status = 'submitted' THEN COALESCE(approved_at, ?) ELSE approved_at END,
+           kiosk_registration = CASE WHEN ? THEN 2 WHEN kiosk_registration = 0 THEN 1 ELSE kiosk_registration END
+         WHERE id = ?`,
+      )
+      .bind(token, now, now, approving ? 1 : 0, id),
+    countersStatement(db, id, now),
     auditStatement(db, c.var.kioskActor, "kiosk_registration_start", id),
   ]);
-  return c.json({ token });
+  if (approving) notifyKioskRegistration(c as unknown as Context<AppEnv>, before, 0);
+  const after = await db.first<{ guest_total: number; approved: number }>(
+    db
+      .prepare(
+        "SELECT r.guest_total, (SELECT COUNT(*) FROM guests g WHERE g.reservation_id = r.id AND g.seq <= r.guest_total AND g.status = 'approved') AS approved FROM reservations r WHERE r.id = ?",
+      )
+      .bind(id),
+  );
+  const pending = !after || after.guest_total === 0 || after.approved < after.guest_total;
+  return c.json({ token, pending });
 });
 
 kioskRoutes.get("/checkout", async (c) => {

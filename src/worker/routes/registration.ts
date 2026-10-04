@@ -349,7 +349,7 @@ function kioskApproveStatements(c: Context<AppEnv>, reservationId: string, now: 
 }
 
 /** タブレットで登録したことをホストに知らせる（自動で承認したので、名簿と写真の確認をお願いする） */
-function notifyKioskRegistration(c: Context<AppEnv>, r: ReservationRow, mismatch: number): void {
+export function notifyKioskRegistration(c: Context<AppEnv>, r: ReservationRow, mismatch: number): void {
   const origin = new URL(c.req.url).origin;
   c.executionCtx.waitUntil(
     notifyHost(c.env, c.var.db, {
@@ -382,7 +382,7 @@ representativeRoutes.post("/submit", async (c) => {
     // スマホで送信済み（承認待ち）の予約をタブレットで開いて送信した場合は、ここで承認する
     const db = c.var.db;
     const now = nowIso();
-    const kiosk = r.kiosk_registration === 1;
+    const kiosk = r.kiosk_registration !== 0;
     await db.batch([
       db.prepare("UPDATE reservations SET guest_token = NULL, group_token = NULL WHERE id = ?").bind(r.id),
       db.prepare("UPDATE guests SET entry_token = NULL WHERE reservation_id = ?").bind(r.id),
@@ -407,7 +407,7 @@ representativeRoutes.post("/submit", async (c) => {
   const now = nowIso();
   const lang = isLang(parsed.data.lang) ? parsed.data.lang : "en";
   const isAddition = r.reg_status === "approved";
-  const kiosk = r.kiosk_registration === 1;
+  const kiosk = r.kiosk_registration !== 0;
   await db.batch([
     db.prepare("UPDATE guests SET status = 'submitted', updated_at = ? WHERE reservation_id = ? AND status = 'ready'").bind(now, r.id),
     isAddition
@@ -449,6 +449,121 @@ representativeRoutes.post("/submit", async (c) => {
       ].join("\n"),
     }),
   );
+  return c.json({ ok: true });
+});
+
+// ---- 玄関のタブレットでの当日の登録（要件定義書 T-05） ----
+//
+// 1 人ずつ入力して登録し、そのまま顔写真の撮影に進む。タブレットが登録を始めた予約（kiosk_registration <> 0）だけで使える。
+// kiosk_registration: 0 = タブレットで登録していない、1 = 登録を始めた、2 = 登録を始めて管理者に通知した
+
+/** 次に入力する枠。承認済みでない枠があればそこ、なければ人数を 1 人増やして新しい枠にする（added: 増やした） */
+representativeRoutes.post("/kiosk/next", async (c) => {
+  const r = c.var.reservation;
+  if (r.kiosk_registration === 0) return error(c, 403, "forbidden", "forbidden");
+  const db = c.var.db;
+  const byseq = new Map((await loadGuests(db, r.id)).map((g) => [g.seq, g]));
+  for (let seq = 1; seq <= r.guest_total; seq++) {
+    if (byseq.get(seq)?.status !== "approved") return c.json({ seq, added: false });
+  }
+  if (r.guest_total >= MAX_GUESTS) return error(c, 400, "too_many", "too_many");
+  const now = nowIso();
+  await db.batch([
+    db
+      .prepare(
+        "UPDATE reservations SET guest_total = guest_total + 1, reg_status = CASE WHEN reg_status = 'none' THEN 'in_progress' ELSE reg_status END, updated_at = ? WHERE id = ?",
+      )
+      .bind(now, r.id),
+    countersStatement(db, r.id, now),
+  ]);
+  return c.json({ seq: r.guest_total + 1, added: true });
+});
+
+/** 入力をやめたとき、/kiosk/next で増やした枠を、入力途中の内容・写真ごと消して人数を戻す */
+representativeRoutes.post("/kiosk/cancel", async (c) => {
+  const r = c.var.reservation;
+  if (r.kiosk_registration === 0) return error(c, 403, "forbidden", "forbidden");
+  const parsed = z.object({ seq: z.number().int().min(1) }).safeParse(await c.req.json());
+  if (!parsed.success || parsed.data.seq !== r.guest_total) return c.json({ ok: false });
+  const db = c.var.db;
+  const row = (await loadGuests(db, r.id)).find((g) => g.seq === parsed.data.seq);
+  if (row?.status === "approved") return c.json({ ok: false });
+  const now = nowIso();
+  await db.batch([
+    db.prepare("DELETE FROM guests WHERE reservation_id = ? AND seq = ? AND status <> 'approved'").bind(r.id, parsed.data.seq),
+    db.prepare("UPDATE reservations SET guest_total = guest_total - 1, updated_at = ? WHERE id = ? AND guest_total = ?").bind(now, r.id, parsed.data.seq),
+    countersStatement(db, r.id, now),
+  ]);
+  if (row?.id_photo_id) await deletePhotos(c.env, db, [row.id_photo_id]);
+  return c.json({ ok: true });
+});
+
+/**
+ * 1 人分の登録。入力済みの枠を承認し（本人が同意にチェックした）、そのままタブレットでチェックインできるようにする。
+ * 全員が承認済みになったら予約も承認済みにする。管理者には、この予約で最初に登録したときだけ通知する
+ */
+representativeRoutes.post("/kiosk/register", async (c) => {
+  const r = c.var.reservation;
+  if (r.kiosk_registration === 0) return error(c, 403, "forbidden", "forbidden");
+  const parsed = z.object({ seq: z.number().int().min(1), consent: z.literal(true), lang: z.string() }).safeParse(await c.req.json());
+  if (!parsed.success) return error(c, 400, "bad_request", "consent_required");
+  const { seq } = parsed.data;
+  if (seq > r.guest_total) return error(c, 404, "not_found", "not_found");
+  const db = c.var.db;
+  const guest = (await loadGuests(db, r.id)).find((g) => g.seq === seq);
+  if (!guest || (guest.status !== "ready" && guest.status !== "submitted")) return error(c, 409, "incomplete", "incomplete");
+
+  const now = nowIso();
+  const lang = isLang(parsed.data.lang) ? parsed.data.lang : "en";
+  await db.batch([
+    db
+      .prepare(
+        "UPDATE guests SET status = 'approved', approved_at = ?, consent_at = COALESCE(consent_at, ?), entered_by = 'self', updated_at = ? WHERE id = ?",
+      )
+      .bind(now, now, now, guest.id),
+    db
+      .prepare(
+        `UPDATE reservations SET
+           reg_status = CASE
+             WHEN (SELECT COUNT(*) FROM guests WHERE reservation_id = ?1 AND seq <= guest_total AND status = 'approved') >= guest_total THEN 'approved'
+             WHEN reg_status = 'none' THEN 'in_progress'
+             ELSE reg_status END,
+           approved_at = COALESCE(approved_at, ?2), submitted_at = COALESCE(submitted_at, ?2), consent_at = COALESCE(consent_at, ?2),
+           reject_reason = NULL, lang = ?3, kiosk_registration = 2, updated_at = ?2
+         WHERE id = ?1`,
+      )
+      .bind(r.id, now, lang),
+    countersStatement(db, r.id, now),
+    auditStatement(db, "kiosk", "kiosk_registration", guest.id),
+  ]);
+  await renamePhotosForGuests(c.env, db, r.id, [guest]).catch((e) =>
+    console.error(JSON.stringify({ event: "photo_rename_failed", message: String(e) })),
+  );
+  if (r.kiosk_registration === 1) notifyKioskRegistration(c, r, guest.passport_check === "mismatch" ? 1 : 0);
+  return c.json({ guestId: guest.id, name: guest.full_name ?? "" });
+});
+
+/**
+ * タブレットでの登録を終える。全員の登録が済んでいれば、送信したときと同じように URL を使えなくする
+ * （まだ入力していない人がいれば、スマホで続きを入力できるよう URL は残す）
+ */
+representativeRoutes.post("/kiosk/finish", async (c) => {
+  const r = c.var.reservation;
+  if (r.kiosk_registration === 0) return c.json({ ok: true });
+  const db = c.var.db;
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE reservations SET kiosk_registration = 0,
+           guest_token = CASE WHEN reg_status = 'approved' THEN NULL ELSE guest_token END,
+           group_token = CASE WHEN reg_status = 'approved' THEN NULL ELSE group_token END
+         WHERE id = ?`,
+      )
+      .bind(r.id),
+    db
+      .prepare("UPDATE guests SET entry_token = NULL WHERE reservation_id = ? AND (SELECT reg_status FROM reservations WHERE id = ?) = 'approved'")
+      .bind(r.id, r.id),
+  ]);
   return c.json({ ok: true });
 });
 

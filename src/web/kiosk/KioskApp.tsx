@@ -6,7 +6,7 @@ import { resizeImage } from "../registration/photo";
 import { acquireCamera, releaseCamera } from "./cameraStream";
 import { useDocumentTitle } from "../lib/title";
 import { confirmDialog } from "../lib/dialog";
-import { RegistrationApp } from "../registration/RegistrationApp";
+import { KioskRegistration } from "../registration/RegistrationApp";
 
 /** 玄関タブレットの画面（要件定義書 5.4、設計書 4.6） */
 
@@ -22,12 +22,12 @@ type Screen =
   | { kind: "lang" }
   | { kind: "menu" }
   | { kind: "checkin" }
-  | { kind: "camera"; guestId: string; name: string }
-  | { kind: "checkedIn"; name: string; allDone: boolean }
+  // walkin: タブレットで当日登録した人（撮影の後に「次の方を登録する／終わる」を出す）
+  | { kind: "camera"; guestId: string; name: string; walkin?: boolean }
+  | { kind: "checkedIn"; name: string; allDone: boolean; walkin?: boolean }
   | { kind: "notListed" }
   | { kind: "walkin" }
-  | { kind: "register"; token: string }
-  | { kind: "registered" }
+  | { kind: "register"; token: string; seq: number }
   | { kind: "checkout" }
   | { kind: "confirmCheckout"; reservationId: string; name: string }
   | { kind: "checkedOut" }
@@ -262,18 +262,19 @@ export function KioskApp() {
     loadStatus();
   }, [loadStatus]);
 
-  // 60 秒操作がなければ最初の画面に戻る。完了画面は 15 秒で戻る（要件定義書 T-10）
+  // 60 秒操作がなければ最初の画面に戻る。完了画面は 15 秒で戻る（要件定義書 T-10）。
+  // 当日登録した人のチェックインの完了画面は、次の方の登録を選べるよう 60 秒にする
   useEffect(() => {
     if (["lang", "loading", "pair", "error"].includes(screen.kind)) return;
-    const doneScreens = ["checkedIn", "checkedOut", "notListed"];
-    const ms = doneScreens.includes(screen.kind) ? DONE_MS : screen.kind === "register" ? REGISTER_IDLE_MS : IDLE_MS;
+    const done = ["checkedIn", "checkedOut", "notListed"].includes(screen.kind) && !(screen.kind === "checkedIn" && screen.walkin);
+    const ms = done ? DONE_MS : screen.kind === "register" ? REGISTER_IDLE_MS : IDLE_MS;
     let timer = setTimeout(toLanguage, ms);
     const reset = () => {
       clearTimeout(timer);
       timer = setTimeout(toLanguage, ms);
     };
     const events = ["pointerdown", "keydown"];
-    if (!doneScreens.includes(screen.kind)) events.forEach((e) => window.addEventListener(e, reset));
+    if (!done) events.forEach((e) => window.addEventListener(e, reset));
     return () => {
       clearTimeout(timer);
       events.forEach((e) => window.removeEventListener(e, reset));
@@ -301,12 +302,12 @@ export function KioskApp() {
     }
   };
 
-  const uploadPhoto = async (guestId: string, name: string, blob: Blob): Promise<boolean> => {
+  const uploadPhoto = async (guestId: string, name: string, blob: Blob, walkin?: boolean): Promise<boolean> => {
     const form = new FormData();
     form.append("file", blob, "kiosk.jpg");
     try {
       const res = await kioskApi<{ allDone: boolean }>(`/guests/${guestId}/photo`, { method: "POST", form });
-      setScreen({ kind: "checkedIn", name, allDone: res.allDone });
+      setScreen({ kind: "checkedIn", name, allDone: res.allDone, walkin });
       return true;
     } catch {
       return false;
@@ -324,14 +325,61 @@ export function KioskApp() {
     }
   };
 
-  const startRegister = async (reservationId: string) => {
+  /**
+   * タブレットでの当日の登録（要件定義書 T-05）。token: 宿泊者入力画面の API のトークン、
+   * cancelSeq: 登録の画面のために増やした枠（登録せずに画面を離れたら消す）
+   */
+  const walkinRef = useRef<{ token: string; cancelSeq: number | null } | null>(null);
+
+  const regApi = async <T,>(token: string, path: string, body?: unknown): Promise<T> => {
+    const res = await fetch(`/api/r/kiosk${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+    if (!res.ok) throw new KioskError(res.status);
+    return res.json() as Promise<T>;
+  };
+
+  /** 次の方の入力の画面を開く（承認済みでない枠、なければ人数を 1 人増やした枠） */
+  const nextGuest = async () => {
+    const session = walkinRef.current;
+    if (!session) return setScreen({ kind: "checkin" });
     try {
-      const { token } = await kioskApi<{ token: string }>(`/walkin/${reservationId}`, { method: "POST" });
-      setScreen({ kind: "register", token });
+      const { seq, added } = await regApi<{ seq: number; added: boolean }>(session.token, "/next");
+      session.cancelSeq = added ? seq : null;
+      setScreen({ kind: "register", token: session.token, seq });
     } catch {
       setScreen({ kind: "error" });
     }
   };
+
+  const startRegister = async (reservationId: string) => {
+    try {
+      const { token, pending } = await kioskApi<{ token: string; pending: boolean }>(`/walkin/${reservationId}`, { method: "POST" });
+      walkinRef.current = { token, cancelSeq: null };
+      // スマホで送信済みだった人はここで承認され、一覧に名前が出る。登録が済んでいない人がいなければ一覧に戻る
+      if (pending) await nextGuest();
+      else await openCheckin();
+    } catch {
+      setScreen({ kind: "error" });
+    }
+  };
+
+  // 登録の流れ（入力 → 撮影 → 次の方）から離れたら、増やした枠を消し、タブレットでの登録を終える
+  useEffect(() => {
+    const session = walkinRef.current;
+    if (!session) return;
+    const inSession = screen.kind === "register" || ((screen.kind === "camera" || screen.kind === "checkedIn") && !!screen.walkin);
+    const cancelSeq = screen.kind !== "register" ? session.cancelSeq : null;
+    if (cancelSeq !== null) session.cancelSeq = null;
+    if (!inSession) walkinRef.current = null;
+    if (cancelSeq === null && inSession) return;
+    void (async () => {
+      if (cancelSeq !== null) await regApi(session.token, "/cancel", { seq: cancelSeq }).catch(() => undefined);
+      if (!inSession) await regApi(session.token, "/finish").catch(() => undefined);
+    })();
+  }, [screen]);
 
   const stayLabel = (checkIn: string, checkOut: string) => {
     const f = (d: string) =>
@@ -466,8 +514,9 @@ export function KioskApp() {
         <Camera
           t={t}
           name={screen.name}
-          onCaptured={(blob) => uploadPhoto(screen.guestId, screen.name, blob)}
-          onBack={() => setScreen({ kind: "checkin" })}
+          onCaptured={(blob) => uploadPhoto(screen.guestId, screen.name, blob, screen.walkin)}
+          // 当日登録した人は一覧に加わっているので、読み直してから戻る
+          onBack={() => (screen.walkin ? openCheckin() : setScreen({ kind: "checkin" }))}
         />
       );
       break;
@@ -476,11 +525,27 @@ export function KioskApp() {
         <div className="kiosk-center">
           <div className="kiosk-check">✓</div>
           <h2>{fill(t.checkedIn, { name: screen.name })}</h2>
-          <p className="kiosk-guide">{screen.allDone ? t.allCheckedIn : t.othersRemaining}</p>
-          {!screen.allDone && (
-            <button className="kbtn primary" onClick={openCheckin}>
-              {t.checkIn}
-            </button>
+          {screen.walkin ? (
+            <>
+              <p className="kiosk-guide">{t.walkinNextBody}</p>
+              <div className="kiosk-grid two">
+                <button className="kbtn huge primary" onClick={nextGuest}>
+                  {t.walkinNext}
+                </button>
+                <button className="kbtn huge" onClick={toLanguage}>
+                  {t.walkinFinish}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="kiosk-guide">{screen.allDone ? t.allCheckedIn : t.othersRemaining}</p>
+              {!screen.allDone && (
+                <button className="kbtn primary" onClick={openCheckin}>
+                  {t.checkIn}
+                </button>
+              )}
+            </>
           )}
         </div>
       );
@@ -521,25 +586,23 @@ export function KioskApp() {
             <button
               className="kbtn small"
               onClick={async () => {
-                if (await confirmDialog(t.walkinCancelConfirm, { okLabel: t.walkinCancel })) setScreen({ kind: "checkin" });
+                if (await confirmDialog(t.walkinCancelConfirm, { okLabel: t.walkinCancel })) await openCheckin();
               }}
             >
               ← {t.walkinCancel}
             </button>
           </div>
-          <RegistrationApp role="r" token={screen.token} kiosk={{ lang, onSubmitted: () => setScreen({ kind: "registered" }) }} />
-        </div>
-      );
-      break;
-    case "registered":
-      content = (
-        <div className="kiosk-center">
-          <div className="kiosk-check">✓</div>
-          <h2>{t.registered}</h2>
-          <p className="kiosk-guide">{t.registeredBody}</p>
-          <button className="kbtn huge primary" onClick={openCheckin}>
-            {t.checkIn}
-          </button>
+          <KioskRegistration
+            key={screen.seq}
+            token={screen.token}
+            seq={screen.seq}
+            lang={lang}
+            onRegistered={(guest) => {
+              // 登録したら、一覧で名前をタップしたときと同じように撮影に進む（増やした枠は消さない）
+              if (walkinRef.current) walkinRef.current.cancelSeq = null;
+              setScreen({ kind: "camera", guestId: guest.guestId, name: guest.name, walkin: true });
+            }}
+          />
         </div>
       );
       break;

@@ -195,11 +195,18 @@ function GuestEditor(props: {
   readOnly: boolean;
   /** 玄関のタブレットで入力している（身分証は前面のカメラで撮る） */
   kiosk: boolean;
+  /**
+   * 玄関のタブレットで 1 人ずつ登録するとき（要件定義書 T-05）。本人が同意にチェックし、ハウスルールもここで確認する。
+   * 「登録する」で保存して onRegister を呼ぶ（成功したら撮影に進むので、この画面には戻らない）
+   */
+  kioskRegister?: { houseRules: string; onRegister: () => Promise<boolean> };
   onSaved: () => Promise<void>;
   onBack: () => void;
 }) {
   const { t, lang, api, seq, representative, checkInDate } = props;
   const isCompanion = props.role === "companion";
+  /** 本人が同意にチェックする（同行者、タブレットで登録する人） */
+  const selfConsent = isCompanion || !!props.kioskRegister;
   const [g, setG] = useState<GuestFields>(() => {
     const base = props.guest ? { ...props.guest } : { ...EMPTY_GUEST };
     // 2 人目以降は、代表者と同じ答え・国籍を初期値にする。住所・連絡先は「代表者と同じ」にチェックしたときだけ写す（要件定義書 G-17）
@@ -271,7 +278,7 @@ function GuestEditor(props: {
   const missing = missingFields(normalizeGuest(g), checkInDate);
   const under16 = isUnder16(g.birthDate, checkInDate);
   // 同行者は本人の同意も必要（要件定義書 G-18）
-  const problems: (MissingField | "consent")[] = [...missing, ...(isCompanion && !consent ? (["consent"] as const) : [])];
+  const problems: (MissingField | "consent")[] = [...missing, ...(selfConsent && !consent ? (["consent"] as const) : [])];
   /** 保存を押した後、足りない項目を赤く示す */
   const bad = (field: MissingField | "consent") => (showMissing && problems.includes(field) ? "missing" : undefined);
   const problemLabel = (p: MissingField | "consent") => (p === "consent" ? t.consentLabel : t[MISSING_KEY[p]]);
@@ -307,6 +314,13 @@ function GuestEditor(props: {
     if (incomplete) {
       setNotice(t.incompleteSaved);
       requestAnimationFrame(() => editor.current?.querySelector(".missing")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+      return;
+    }
+    if (props.kioskRegister) {
+      setSaving(true);
+      const ok = await props.kioskRegister.onRegister();
+      setSaving(false);
+      if (!ok) setError(t.errorGeneric);
       return;
     }
     props.onBack();
@@ -467,7 +481,13 @@ function GuestEditor(props: {
             )}
 
 
-            {isCompanion && (
+            {props.kioskRegister?.houseRules && (
+              <details className="rules">
+                <summary>{t.houseRules}</summary>
+                <p className="pre">{props.kioskRegister.houseRules}</p>
+              </details>
+            )}
+            {selfConsent && (
               <label className={`check ${bad("consent") ?? ""}`}>
                 <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
                 <span>
@@ -491,9 +511,9 @@ function GuestEditor(props: {
       {!disabled && (
         <div className="actions">
           <button className="button primary" onClick={finish} disabled={saving}>
-            {isCompanion ? t.done : t.save}
+            {props.kioskRegister ? t.kioskRegister : isCompanion ? t.done : t.save}
           </button>
-          {!isCompanion && (
+          {!isCompanion && !props.kioskRegister && (
             <button
               className="button"
               onClick={async () => {
@@ -527,8 +547,6 @@ function GuestList(props: {
   lang: Lang;
   onEdit: (seq: number) => void;
   onSubmitted: () => Promise<void>;
-  /** 同行者用のリンクを共有するボタンを出す（玄関のタブレットでは出さない） */
-  allowShare: boolean;
 }) {
   const { t, view, api } = props;
   const [count, setCount] = useState(view.guestTotal || 1);
@@ -621,7 +639,7 @@ function GuestList(props: {
           );
         })}
       </ul>
-      {props.allowShare && view.guestTotal > 1 && view.regStatus !== "submitted" && pending.some((s) => s > 1) && (
+      {view.guestTotal > 1 && view.regStatus !== "submitted" && pending.some((s) => s > 1) && (
         <div className="share-block">
           <button className="button" onClick={share}>
             {t.shareLink}
@@ -714,22 +732,10 @@ function SubmitBlock(props: {
 
 type Screen = { kind: "list" } | { kind: "edit"; seq: number };
 
-/**
- * kiosk: 玄関のタブレットの中で開くとき（要件定義書 T-11）。言語はタブレットで選んだもの、同行者用のリンクの共有はなし、
- * 送信したらタブレットのチェックインに進む
- */
-export function RegistrationApp({
-  role,
-  token,
-  kiosk,
-}: {
-  role: "r" | "g";
-  token: string;
-  kiosk?: { lang: Lang; onSubmitted: () => void };
-}) {
+export function RegistrationApp({ role, token }: { role: "r" | "g"; token: string }) {
   const api = useApi(role === "r" ? "/api/r" : "/api/g", token);
   const loadPhoto = useLoadPhoto(role === "r" ? "/api/r" : "/api/g", token);
-  const [lang, setLangState] = useState<Lang>(() => kiosk?.lang ?? initialLang());
+  const [lang, setLangState] = useState<Lang>(initialLang);
   const [view, setView] = useState<RegistrationView | null>(null);
   const [failure, setFailure] = useState<"invalid" | "error" | null>(null);
   const [screen, setScreen] = useState<Screen>({ kind: "list" });
@@ -882,16 +888,13 @@ export function RegistrationApp({
           <>
             {screen.kind === "list" && (
               <>
-                {!kiosk && <p className="note">{t.repOnly}</p>}
-                {/* 玄関のタブレットで登録している人には、事前登録やタブレットの案内は出さない */}
-                {!kiosk && (
-                  <div className="notices">
-                    <p>{t.noticeTablet}</p>
-                    <p>
-                      <strong>{t.noticeUnregistered}</strong>
-                    </p>
-                  </div>
-                )}
+                <p className="note">{t.repOnly}</p>
+                <div className="notices">
+                  <p>{t.noticeTablet}</p>
+                  <p>
+                    <strong>{t.noticeUnregistered}</strong>
+                  </p>
+                </div>
                 {view.regStatus === "submitted" && <p className="notice">{t.statusSubmitted}</p>}
                 {view.regStatus === "approved" && <p className="notice">{t.statusApproved}</p>}
                 {view.regStatus === "rejected" && (
@@ -907,13 +910,8 @@ export function RegistrationApp({
                   reload={reload}
                   lang={lang}
                   onEdit={(seq) => setScreen({ kind: "edit", seq })}
-                  allowShare={!kiosk}
                   onSubmitted={async () => {
-                    // 送信すると URL は使えなくなるので、読み直さずに完了の画面にする（タブレットではチェックインに進む）
-                    if (kiosk) {
-                      kiosk.onSubmitted();
-                      return;
-                    }
+                    // 送信すると URL は使えなくなるので、読み直さずに完了の画面にする
                     setSubmitted(true);
                     window.scrollTo(0, 0);
                   }}
@@ -933,7 +931,7 @@ export function RegistrationApp({
                 representative={screen.seq > 1 ? representative : undefined}
                 checkInDate={view.checkInDate}
                 readOnly={view.guests.find((g) => g.seq === screen.seq)?.status === "approved"}
-                kiosk={!!kiosk}
+                kiosk={false}
                 onSaved={reload}
                 onBack={() => {
                   setScreen({ kind: "list" });
@@ -943,6 +941,84 @@ export function RegistrationApp({
             )}
           </>
         )}
+      </main>
+    </div>
+  );
+}
+
+// ---- 玄関のタブレットでの当日の登録（要件定義書 T-05） ----
+
+/**
+ * 玄関のタブレットで 1 人分を入力して登録する。入力の項目は事前登録と同じで、本人が同意にチェックする。
+ * 「登録する」で承認まで済ませ、onRegistered でそのまま顔写真の撮影に進む（一覧で名前をタップしたのと同じ）
+ */
+export function KioskRegistration({
+  token,
+  seq,
+  lang,
+  onRegistered,
+}: {
+  token: string;
+  seq: number;
+  lang: Lang;
+  onRegistered: (guest: { guestId: string; name: string }) => void;
+}) {
+  const api = useApi("/api/r", token);
+  const loadPhoto = useLoadPhoto("/api/r", token);
+  const [view, setView] = useState<RegistrationView | null>(null);
+  const [failed, setFailed] = useState(false);
+  const t = GUEST_TEXT[lang];
+
+  const reload = useCallback(async () => {
+    try {
+      setView(await api<RegistrationView>(""));
+    } catch {
+      setFailed(true);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const register = async (): Promise<boolean> => {
+    try {
+      onRegistered(await api<{ guestId: string; name: string }>("/kiosk/register", { method: "POST", body: { seq, consent: true, lang } }));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  if (failed || !view) {
+    return (
+      <div className="reg">
+        <main className="reg-main">{failed ? <p className="alert">{t.errorGeneric}</p> : <p className="note">{t.loading}</p>}</main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="reg">
+      <main className="reg-main">
+        {view.isTest && <p className="test-banner">{t.testBanner}</p>}
+        <GuestEditor
+          key={seq}
+          t={t}
+          lang={lang}
+          api={api}
+          loadPhoto={loadPhoto}
+          role="representative"
+          seq={seq}
+          guest={view.guests.find((g) => g.seq === seq)}
+          representative={seq > 1 ? view.guests.find((g) => g.seq === 1) : undefined}
+          checkInDate={view.checkInDate}
+          readOnly={false}
+          kiosk
+          kioskRegister={{ houseRules: view.houseRules[lang] || view.houseRules.en || view.houseRules.ja, onRegister: register }}
+          onSaved={reload}
+          onBack={() => undefined}
+        />
       </main>
     </div>
   );

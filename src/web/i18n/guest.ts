@@ -106,6 +106,7 @@ const ja = {
   idCameraCheck: "文字がはっきり読めるか確認してください。",
   idCameraUse: "この写真を使う",
   idCameraError: "カメラを起動できませんでした。ホストに連絡してください。",
+  kioskRegister: "登録して顔写真の撮影へ",
 };
 
 type Dict = typeof ja;
@@ -215,6 +216,7 @@ const en: Dict = {
   idCameraCheck: "Please check that the text is clearly readable.",
   idCameraUse: "Use this photo",
   idCameraError: "The camera could not be started. Please contact the host.",
+  kioskRegister: "Register and take a face photo",
 };
 
 const ko: Dict = {
@@ -322,6 +324,7 @@ const ko: Dict = {
   idCameraCheck: "글자가 선명하게 읽히는지 확인해 주세요.",
   idCameraUse: "이 사진 사용",
   idCameraError: "카메라를 시작할 수 없습니다. 호스트에게 연락해 주세요.",
+  kioskRegister: "등록하고 얼굴 사진 촬영으로",
 };
 
 const zhHans: Dict = {
@@ -429,6 +432,7 @@ const zhHans: Dict = {
   idCameraCheck: "请确认文字是否清晰可读。",
   idCameraUse: "使用这张照片",
   idCameraError: "无法启动摄像头。请联系房东。",
+  kioskRegister: "登记并拍摄面部照片",
 };
 
 const zhHant: Dict = {
@@ -536,6 +540,7 @@ const zhHant: Dict = {
   idCameraCheck: "請確認文字是否清晰可讀。",
   idCameraUse: "使用這張照片",
   idCameraError: "無法啟動相機。請聯絡房東。",
+  kioskRegister: "登記並拍攝臉部照片",
 };
 
 export type GuestText = Dict;
