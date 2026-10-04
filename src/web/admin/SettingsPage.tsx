@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { LANG_NAME, LANGS, type Lang } from "../../shared/langs";
-import { TEXT_KIND_LABEL, TEXT_KINDS, TEXT_PLACEHOLDERS, type TextKind } from "../../shared/templates";
+import { TEXT_KIND_LABEL, TEXT_KINDS, TEXT_PLACEHOLDERS, textMaxLength, type TextKind } from "../../shared/templates";
 import { api } from "../lib/api";
 import { confirmDialog } from "../lib/dialog";
 import { navigate } from "../lib/router";
@@ -267,9 +267,15 @@ function TextsSection() {
           </label>
         </div>
         {TEXT_PLACEHOLDERS[kind] && <p className="note">差し込み: {TEXT_PLACEHOLDERS[kind]}</p>}
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} maxLength={3000} />
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={kind === "privacy" ? 18 : 8} maxLength={textMaxLength(kind)} />
         <p className="note">
-          {current ? "編集済みの文面です。" : fallback ? "既定の文面です。" : "未設定です（他の言語の文面がある場合は、英語・日本語の順に代わりに使います）。"}
+          {current
+            ? "編集済みの文面です。"
+            : fallback
+              ? "既定の文面です。"
+              : kind === "privacy"
+                ? "未設定です（この言語のプライバシーポリシーは表示しません。日本語と英語は常に表示します）。"
+                : "未設定です（他の言語の文面がある場合は、英語・日本語の順に代わりに使います）。"}
         </p>
         <div className="actions">
           <button className="button primary" onClick={save}>

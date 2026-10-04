@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../env";
+import { LANGS } from "../../shared/langs";
 import { getSettings } from "../lib/settings";
 
 /** 公開ページ（ホームページ・プライバシーポリシー）用の情報。設定のキャッシュから返す */
@@ -26,10 +27,13 @@ publicRoutes.get("/health", (c) => {
 });
 
 publicRoutes.get("/info", async (c) => {
-  const { property } = await getSettings(c.var.db);
+  const settings = await getSettings(c.var.db);
+  const { property } = settings;
   return c.json({
     name: property.name,
     operatorName: property.operator_name,
     operatorContact: property.operator_contact,
+    // 管理者が書き換えたプライバシーポリシー（言語ごと。書き換えていない言語は含めず、画面が既定の文面を使う）
+    privacy: Object.fromEntries(LANGS.map((l) => [l, settings.texts.get(`privacy:${l}`)]).filter(([, v]) => v)),
   });
 });

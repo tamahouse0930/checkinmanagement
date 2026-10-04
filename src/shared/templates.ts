@@ -1,8 +1,13 @@
 import type { Lang } from "./langs";
 
 /** 管理者がコピーする案内文と、画面に出す文面（要件定義書 L-07、設計書 property_texts） */
-export type TextKind = "invite" | "code" | "reject" | "host_contact" | "house_rules";
-export const TEXT_KINDS: TextKind[] = ["invite", "code", "reject", "host_contact", "house_rules"];
+export type TextKind = "invite" | "code" | "reject" | "host_contact" | "house_rules" | "privacy";
+export const TEXT_KINDS: TextKind[] = ["invite", "code", "reject", "host_contact", "house_rules", "privacy"];
+
+/** 文面の長さの上限（プライバシーポリシーは長いので別にする） */
+export function textMaxLength(kind: TextKind): number {
+  return kind === "privacy" ? 10000 : 3000;
+}
 
 export const TEXT_KIND_LABEL: Record<TextKind, string> = {
   invite: "URL の案内文",
@@ -10,6 +15,7 @@ export const TEXT_KIND_LABEL: Record<TextKind, string> = {
   reject: "差し戻しの案内文",
   host_contact: "連絡方法（タブレットに表示）",
   house_rules: "ハウスルール（同意してもらう）",
+  privacy: "個人情報の取り扱い（プライバシーポリシー）",
 };
 
 export const TEXT_PLACEHOLDERS: Record<TextKind, string> = {
@@ -18,6 +24,7 @@ export const TEXT_PLACEHOLDERS: Record<TextKind, string> = {
   reject: "{name} 施設名、{reason} 差し戻しの理由、{url} 入力画面の URL",
   host_contact: "",
   house_rules: "",
+  privacy: "{name} 施設名、{operator} 事業者名、{contact} 問い合わせ先。書き方: 「# 」大見出し、「## 」見出し、「- 」箇条書き、空行で段落",
 };
 
 type Defaults = Record<"invite" | "code" | "reject", Record<Lang, string>>;

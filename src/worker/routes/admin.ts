@@ -12,7 +12,8 @@ import { adminGuestRoutes } from "./admin-guests";
 import { ledgerRoutes } from "./ledger";
 import { reservationRoutes } from "./reservations";
 import { LANGS } from "../../shared/langs";
-import { DEFAULT_TEXTS, TEXT_KINDS, type TextKind } from "../../shared/templates";
+import { DEFAULT_TEXTS, TEXT_KINDS, textMaxLength, type TextKind } from "../../shared/templates";
+import { DEFAULT_PRIVACY } from "../../shared/privacy";
 
 /** 施設管理者の API（予約・名簿・写真・設定。設計書 7.1） */
 export const adminRoutes = new Hono<AppEnv>();
@@ -153,15 +154,16 @@ adminRoutes.delete("/devices/:id", async (c) => {
 
 adminRoutes.get("/texts", async (c) => {
   const { texts } = await getSettings(c.var.db);
-  return c.json({ texts: Object.fromEntries(texts), defaults: DEFAULT_TEXTS });
+  return c.json({ texts: Object.fromEntries(texts), defaults: { ...DEFAULT_TEXTS, privacy: DEFAULT_PRIVACY } });
 });
 
 adminRoutes.put("/texts", async (c) => {
   const parsed = z
-    .object({ kind: z.enum(TEXT_KINDS as [TextKind, ...TextKind[]]), lang: z.enum(LANGS), body: z.string().max(3000) })
+    .object({ kind: z.enum(TEXT_KINDS as [TextKind, ...TextKind[]]), lang: z.enum(LANGS), body: z.string().max(10000) })
     .safeParse(await c.req.json());
   if (!parsed.success) return c.json(badRequest("入力内容を確認してください"), 400);
   const { kind, lang, body } = parsed.data;
+  if (body.length > textMaxLength(kind)) return c.json(badRequest(`${textMaxLength(kind)} 文字までにしてください`), 400);
   const db = c.var.db;
   // 空にしたら既定の文面に戻す（行を消す）
   await db.batch([
