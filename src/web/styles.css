@@ -1828,3 +1828,52 @@ label.check.inline {
   -webkit-user-select: text;
   -webkit-touch-callout: default;
 }
+
+/* 同行者の皆さんに送る共通のリンク */
+.share-block {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.group-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.group-actions .button {
+  text-align: center;
+  text-decoration: none;
+}
+
+/* 個人情報の取り扱いを入力画面の上に重ねて表示する */
+.policy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.policy-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.policy-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  width: 100%;
+  padding-top: 16px;
+}
+
+.kiosk-body .policy-body {
+  user-select: text;
+  -webkit-user-select: text;
+}

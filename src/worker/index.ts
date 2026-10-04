@@ -7,7 +7,7 @@ import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
 import { kioskRoutes } from "./routes/kiosk";
 import { publicRoutes } from "./routes/public";
-import { companionRoutes, representativeRoutes } from "./routes/registration";
+import { companionRoutes, groupRoutes, representativeRoutes } from "./routes/registration";
 import { runScheduled } from "./services/scheduled";
 import { systemRoutes } from "./routes/system";
 
@@ -43,7 +43,7 @@ app.use("*", async (c, next) => {
 
 // 回数制限。管理画面の API はログインが必要なため対象にしない（設計書 7.2）
 app.use("/api/kiosk/pair", rateLimit("PAIR_LIMITER"));
-for (const path of ["/auth/*", "/api/public/*", "/api/r/*", "/api/g/*", "/api/kiosk/*"]) {
+for (const path of ["/auth/*", "/api/public/*", "/api/r/*", "/api/g/*", "/api/j/*", "/api/kiosk/*"]) {
   app.use(path, rateLimit("PUBLIC_LIMITER"));
 }
 
@@ -54,6 +54,7 @@ app.route("/api/system", systemRoutes);
 app.route("/api/public", publicRoutes);
 app.route("/api/r", representativeRoutes);
 app.route("/api/g", companionRoutes);
+app.route("/api/j", groupRoutes);
 app.route("/api/kiosk", kioskRoutes);
 
 app.notFound((c) => c.json({ error: { code: "not_found", message: "見つかりません" } }, 404));

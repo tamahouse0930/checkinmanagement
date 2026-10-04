@@ -6,6 +6,7 @@ import { detectLang, isLang, LANG_NAME, LANGS, type Lang } from "../../shared/la
 import { fill, GUEST_TEXT, type GuestText } from "../i18n/guest";
 import { BirthDateSelect } from "./BirthDateSelect";
 import { CountrySelect } from "./CountrySelect";
+import { PrivacyLink } from "./PrivacyDialog";
 import { alpha3ToAlpha2, type MrzResult } from "../../shared/mrz";
 import { resizeImage } from "./photo";
 import { useDocumentTitle } from "../lib/title";
@@ -449,10 +450,7 @@ function GuestEditor(props: {
                 <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
                 <span>
                   {t.consentSelf}（
-                  <a href="/privacy" target="_blank" rel="noreferrer">
-                    {t.privacyLink}
-                  </a>
-                  ）
+                  <PrivacyLink lang={lang} label={t.privacyLink} closeLabel={t.close} />）
                 </span>
               </label>
             )}
@@ -522,15 +520,22 @@ function GuestList(props: {
     await props.reload();
   };
 
-  const share = async (seq: number) => {
+  /** 同行者の皆さんに送る共通のリンク（LINE のグループなどに 1 つ送れば、開いた人ごとに枠を割り当てる） */
+  const share = async () => {
     setMessage(null);
-    const { url } = await api<{ url: string }>(`/guests/${seq}/link`, { method: "POST" });
-    await props.reload();
+    let url: string;
+    try {
+      ({ url } = await api<{ url: string }>("/group-link", { method: "POST" }));
+    } catch {
+      setMessage(t.errorGeneric);
+      return;
+    }
     if (navigator.share) {
       await navigator.share({ title: t.shareTitle, text: t.shareText, url }).catch(() => undefined);
     } else {
-      await navigator.clipboard.writeText(url);
-      setMessage(t.linkCopied);
+      // コピーできない環境では、リンクをそのまま表示して手でコピーしてもらう
+      const copied = await navigator.clipboard?.writeText(url).then(() => true, () => false);
+      setMessage(copied ? t.linkCopied : url);
     }
   };
 
@@ -589,16 +594,19 @@ function GuestList(props: {
                 <button className="button" onClick={() => props.onEdit(seq)}>
                   {isApproved ? t.view : g && g.status !== "draft" ? t.edit : t.enter}
                 </button>
-                {props.allowShare && seq > 1 && !isApproved && (
-                  <button className="button" onClick={() => share(seq)}>
-                    {t.shareLink}
-                  </button>
-                )}
               </div>
             </li>
           );
         })}
       </ul>
+      {props.allowShare && view.guestTotal > 1 && view.regStatus !== "submitted" && pending.some((s) => s > 1) && (
+        <div className="share-block">
+          <button className="button" onClick={share}>
+            {t.shareLink}
+          </button>
+          <p className="note">{t.shareNote}</p>
+        </div>
+      )}
       {message && <p className="notice">{message}</p>}
 
       {approved && (
@@ -656,9 +664,7 @@ function SubmitBlock(props: {
         </details>
       )}
       <p>
-        <a href="/privacy" target="_blank" rel="noreferrer">
-          {t.privacyLink}
-        </a>
+        <PrivacyLink lang={props.lang} label={t.privacyLink} closeLabel={t.close} />
       </p>
       <label className="check">
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />

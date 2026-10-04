@@ -4,6 +4,7 @@ import { AdminApp } from "./admin/AdminApp";
 import { KioskApp } from "./kiosk/KioskApp";
 import { HomePage } from "./public/HomePage";
 import { PrivacyPage } from "./public/PrivacyPage";
+import { GroupApp } from "./registration/GroupApp";
 import { RegistrationApp } from "./registration/RegistrationApp";
 import { SystemApp } from "./system/SystemApp";
 import "./styles.css";
@@ -22,6 +23,8 @@ function Root() {
   if (path === "/system" || path.startsWith("/system/")) return <SystemApp />;
   const reg = /^\/(r|g)\/([A-Za-z0-9_-]{16,64})$/.exec(path);
   if (reg) return <RegistrationApp role={reg[1] as "r" | "g"} token={reg[2]} />;
+  const group = /^\/j\/([A-Za-z0-9_-]{16,64})$/.exec(path);
+  if (group) return <GroupApp token={group[1]} />;
   if (path === "/kiosk") return <KioskApp />;
   if (path === "/privacy") return <PrivacyPage />;
   if (path === "/") return <HomePage />;

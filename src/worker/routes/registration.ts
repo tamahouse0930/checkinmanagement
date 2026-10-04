@@ -298,24 +298,19 @@ representativeRoutes.put("/guest-count", async (c) => {
 
 representativeRoutes.put("/guests/:seq", async (c) => saveGuest(c, Number(c.req.param("seq")), await c.req.json(), false));
 
-/** 同行者用のリンクの発行（要件定義書 G-11） */
-representativeRoutes.post("/guests/:seq/link", async (c) => {
+/**
+ * 同行者の皆さんに送る共通のリンク（要件定義書 G-11）。1 つのリンクを LINE のグループなどに送れば、
+ * 開いた人ごとに空いている枠を割り当てる（/api/j）。同じ予約では同じリンクを返す
+ */
+representativeRoutes.post("/group-link", async (c) => {
   const r = c.var.reservation;
-  const seq = Number(c.req.param("seq"));
-  if (!(seq >= 2 && seq <= r.guest_total)) return error(c, 404, "not_found", "not_found");
-  const db = c.var.db;
-  const now = nowIso();
-  const row = (await loadGuests(db, r.id)).find((g) => g.seq === seq);
-  if (row?.status === "approved") return error(c, 409, "locked", "locked");
-  if (row?.entry_token) return c.json({ url: `${new URL(c.req.url).origin}/g/${row.entry_token}` });
+  if (r.reg_status === "submitted") return error(c, 409, "locked", "locked");
+  const origin = new URL(c.req.url).origin;
+  if (r.group_token) return c.json({ url: `${origin}/j/${r.group_token}` });
   const token = randomToken();
-  const stmts: D1PreparedStatement[] = [];
-  if (!row) stmts.push(upsertGuestStatement(db, r, seq, toFields(null), "draft", "self", null, now));
-  stmts.push(db.prepare("UPDATE guests SET entry_token = ? WHERE reservation_id = ? AND seq = ?").bind(token, r.id, seq));
-  if (r.reg_status === "none") stmts.push(db.prepare("UPDATE reservations SET reg_status = 'in_progress' WHERE id = ?").bind(r.id));
-  stmts.push(countersStatement(db, r.id, now));
-  await db.batch(stmts);
-  return c.json({ url: `${new URL(c.req.url).origin}/g/${token}` });
+  const db = c.var.db;
+  await db.run(db.prepare("UPDATE reservations SET group_token = ? WHERE id = ?").bind(token, r.id));
+  return c.json({ url: `${origin}/j/${token}` });
 });
 
 representativeRoutes.post("/photos", async (c) => {
@@ -389,7 +384,7 @@ representativeRoutes.post("/submit", async (c) => {
     const now = nowIso();
     const kiosk = r.kiosk_registration === 1;
     await db.batch([
-      db.prepare("UPDATE reservations SET guest_token = NULL WHERE id = ?").bind(r.id),
+      db.prepare("UPDATE reservations SET guest_token = NULL, group_token = NULL WHERE id = ?").bind(r.id),
       db.prepare("UPDATE guests SET entry_token = NULL WHERE reservation_id = ?").bind(r.id),
       ...(kiosk ? [...kioskApproveStatements(c, r.id, now), countersStatement(db, r.id, now)] : []),
     ]);
@@ -425,7 +420,7 @@ representativeRoutes.post("/submit", async (c) => {
           .bind(now, now, enteredByRep ? 1 : 0, lang, now, r.id),
     // 送信したら、代表者と同行者の URL はすべて使えなくする（URL が他人の手に渡っても名簿を見られないように）。
     // 修正や同行者の追加が必要なときは、管理者が新しい URL を発行する（差し戻しのときは自動で発行する）
-    db.prepare("UPDATE reservations SET guest_token = NULL WHERE id = ?").bind(r.id),
+    db.prepare("UPDATE reservations SET guest_token = NULL, group_token = NULL WHERE id = ?").bind(r.id),
     db.prepare("UPDATE guests SET entry_token = NULL WHERE reservation_id = ?").bind(r.id),
     ...(kiosk ? kioskApproveStatements(c, r.id, now) : []),
     countersStatement(db, r.id, now),
@@ -467,3 +462,75 @@ companionRoutes.put("/", async (c) => saveGuest(c, c.var.companionSeq!, await c.
 companionRoutes.post("/photos", (c) => uploadPhoto(c, c.var.companionSeq!));
 companionRoutes.get("/photos/:id", (c) => servePhoto(c, c.req.param("id"), c.var.companionSeq));
 companionRoutes.post("/photos/:id/ocr", (c) => readPassportPhoto(c, c.req.param("id"), c.var.companionSeq));
+
+// ---- 同行者の皆さんに送る共通のリンク（/j/:token） ----
+
+/**
+ * 共通のリンクで割り当てられる枠か。代表者が入力を始めた枠や、すでに誰かに割り当てた枠は使わない
+ * （割り当てた枠の中身は、その人専用の URL でしか見られない）
+ */
+function claimable(g: GuestRow | undefined): boolean {
+  return !g || (g.entry_token === null && g.status === "draft" && !g.full_name && !g.id_photo_id);
+}
+
+function openSeqs(r: ReservationRow, guests: GuestRow[]): number[] {
+  if (r.reg_status === "submitted") return [];
+  const byseq = new Map(guests.map((g) => [g.seq, g]));
+  return Array.from({ length: Math.max(r.guest_total - 1, 0) }, (_, i) => i + 2).filter((seq) => claimable(byseq.get(seq)));
+}
+
+const groupAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const token = bearer(c);
+  const db = c.var.db;
+  const r = token ? await db.first<ReservationRow>(db.prepare("SELECT * FROM reservations WHERE group_token = ?").bind(token)) : null;
+  if (!r || !usable(r)) return error(c, 404, "invalid_url", "invalid_url");
+  c.set("reservation", r);
+  c.set("companionSeq", null);
+  await next();
+};
+
+export const groupRoutes = new Hono<AppEnv>();
+groupRoutes.use("*", groupAuth);
+
+/** 共通のリンクの画面に出す情報。宿泊者の氏名などは返さない */
+groupRoutes.get("/", async (c) => {
+  const r = c.var.reservation;
+  const settings = await getSettings(c.var.db);
+  return c.json({
+    property: { name: settings.property.name, checkinTime: settings.property.checkin_time, checkoutTime: settings.property.checkout_time },
+    checkInDate: r.check_in_date,
+    checkOutDate: r.check_out_date,
+    isTest: r.is_test === 1,
+    open: openSeqs(r, await loadGuests(c.var.db, r.id)).length,
+  });
+});
+
+/** 空いている枠を 1 つ割り当て、その人専用の入力画面の URL を返す。同時に押されても同じ枠は割り当てない */
+groupRoutes.post("/claim", async (c) => {
+  const r = c.var.reservation;
+  const db = c.var.db;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const guests = await loadGuests(db, r.id);
+    const seq = openSeqs(r, guests)[0];
+    if (seq === undefined) return error(c, 409, "full", "full");
+    const now = nowIso();
+    if (!guests.some((g) => g.seq === seq)) {
+      await db.batch([
+        upsertGuestStatement(db, r, seq, toFields(null), "draft", "self", null, now),
+        ...(r.reg_status === "none" ? [db.prepare("UPDATE reservations SET reg_status = 'in_progress' WHERE id = ?").bind(r.id)] : []),
+        countersStatement(db, r.id, now),
+      ]);
+    }
+    const token = randomToken();
+    const res = await db.run(
+      db
+        .prepare(
+          `UPDATE guests SET entry_token = ?, entered_by = 'self', updated_at = ? WHERE reservation_id = ? AND seq = ?
+             AND entry_token IS NULL AND status = 'draft' AND COALESCE(full_name, '') = '' AND id_photo_id IS NULL`,
+        )
+        .bind(token, now, r.id, seq),
+    );
+    if (res.meta.changes > 0) return c.json({ url: `${new URL(c.req.url).origin}/g/${token}` });
+  }
+  return error(c, 409, "full", "full");
+});
