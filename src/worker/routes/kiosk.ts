@@ -231,6 +231,47 @@ function checkoutListStatement(c: Context<KioskEnv>) {
     .bind(addDays(today, -3), today);
 }
 
+/**
+ * タブレットで登録できる予約（要件定義書 T-11）。当日の予約のうち、登録が済んでいないもの（承認前、または承認後に
+ * 入力が済んでいない人がいるもの）。氏名は出さず、日程だけで選んでもらう（本人確認はしない。室内のタブレットのため）
+ */
+function walkinStatement(c: Context<KioskEnv>) {
+  const today = jstNow().date;
+  return c.var.db
+    .prepare(
+      `SELECT id, check_in_date, check_out_date, is_test, guest_token FROM reservations
+       WHERE check_out_date >= ?1 AND check_in_date <= ?1 AND status = 'confirmed' AND stay_status <> 'checked_out'
+         AND (reg_status <> 'approved' OR guest_ready < guest_total)
+       ORDER BY check_in_date LIMIT 10`,
+    )
+    .bind(today);
+}
+
+kioskRoutes.get("/walkin", async (c) => {
+  const rows = await c.var.db.all<{ id: string; check_in_date: string; check_out_date: string; is_test: number }>(walkinStatement(c));
+  return c.json({
+    reservations: rows.map((r) => ({ reservationId: r.id, checkInDate: r.check_in_date, checkOutDate: r.check_out_date, isTest: r.is_test === 1 })),
+  });
+});
+
+/**
+ * タブレットで登録を始める。宿泊者入力画面の URL のトークンを返し、タブレットの中で入力画面を開く。
+ * スマホで途中まで入力していれば、同じトークン（同じ入力）の続きから始める。送信したら自動で承認する印を付ける
+ */
+kioskRoutes.post("/walkin/:id", async (c) => {
+  const id = c.req.param("id");
+  const db = c.var.db;
+  const rows = await db.all<{ id: string; guest_token: string | null }>(walkinStatement(c));
+  const target = rows.find((r) => r.id === id);
+  if (!target) return forbidden(c);
+  const token = target.guest_token ?? randomToken();
+  await db.batch([
+    db.prepare("UPDATE reservations SET guest_token = ?, kiosk_registration = 1, updated_at = ? WHERE id = ?").bind(token, nowIso(), id),
+    auditStatement(db, c.var.kioskActor, "kiosk_registration_start", id),
+  ]);
+  return c.json({ token });
+});
+
 kioskRoutes.get("/checkout", async (c) => {
   const rows = await c.var.db.all<{ id: string; display_name: string | null; is_test: number }>(checkoutListStatement(c));
   return c.json({

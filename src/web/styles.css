@@ -1805,3 +1805,26 @@ label.check.inline {
   border-color: var(--danger);
   color: #fff;
 }
+
+/* 玄関のタブレットの中で開く宿泊者入力画面（要件定義書 T-11） */
+.kiosk-register {
+  flex: 1;
+  font-size: 1rem;
+}
+
+.kiosk-register-bar {
+  padding: 12px 16px 0;
+}
+
+.kiosk-register .reg {
+  min-height: 0;
+}
+
+/* タブレットの画面は文字の選択を止めているが、入力欄では文字を入力・選択できるようにする（iPad で入力できなくなるため） */
+.kiosk-body input,
+.kiosk-body textarea,
+.kiosk-body select {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}

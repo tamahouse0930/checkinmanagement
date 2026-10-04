@@ -5,11 +5,15 @@ import { KIOSK_TEXT, type KioskText } from "../i18n/kiosk";
 import { resizeImage } from "../registration/photo";
 import { acquireCamera, releaseCamera } from "./cameraStream";
 import { useDocumentTitle } from "../lib/title";
+import { confirmDialog } from "../lib/dialog";
+import { RegistrationApp } from "../registration/RegistrationApp";
 
 /** 玄関タブレットの画面（要件定義書 5.4、設計書 4.6） */
 
 const IDLE_MS = 60_000;
 const DONE_MS = 15_000;
+/** タブレットで登録している間は、身分証を撮るためにカメラを開いている間なども含め、10 分までは最初の画面に戻らない */
+const REGISTER_IDLE_MS = 10 * 60_000;
 
 type Screen =
   | { kind: "loading" }
@@ -21,6 +25,9 @@ type Screen =
   | { kind: "camera"; guestId: string; name: string }
   | { kind: "checkedIn"; name: string; allDone: boolean }
   | { kind: "notListed" }
+  | { kind: "walkin" }
+  | { kind: "register"; token: string }
+  | { kind: "registered" }
   | { kind: "checkout" }
   | { kind: "confirmCheckout"; reservationId: string; name: string }
   | { kind: "checkedOut" }
@@ -235,6 +242,7 @@ export function KioskApp() {
   useDocumentTitle(status?.propertyName);
   const [guests, setGuests] = useState<{ guestId: string; name: string; done: boolean; isTest: boolean }[]>([]);
   const [stays, setStays] = useState<{ reservationId: string; name: string; isTest: boolean }[]>([]);
+  const [walkins, setWalkins] = useState<{ reservationId: string; checkInDate: string; checkOutDate: string; isTest: boolean }[]>([]);
   const [pairCode, setPairCode] = useState("");
   const [pairError, setPairError] = useState(false);
   const t = KIOSK_TEXT[lang];
@@ -258,7 +266,7 @@ export function KioskApp() {
   useEffect(() => {
     if (["lang", "loading", "pair", "error"].includes(screen.kind)) return;
     const doneScreens = ["checkedIn", "checkedOut", "notListed"];
-    const ms = doneScreens.includes(screen.kind) ? DONE_MS : IDLE_MS;
+    const ms = doneScreens.includes(screen.kind) ? DONE_MS : screen.kind === "register" ? REGISTER_IDLE_MS : IDLE_MS;
     let timer = setTimeout(toLanguage, ms);
     const reset = () => {
       clearTimeout(timer);
@@ -303,6 +311,32 @@ export function KioskApp() {
     } catch {
       return false;
     }
+  };
+
+  /** 一覧に名前がない方: 当日の未登録の予約があれば、タブレットで登録できる（要件定義書 T-11） */
+  const openWalkin = async () => {
+    try {
+      const list = (await kioskApi<{ reservations: typeof walkins }>("/walkin")).reservations;
+      setWalkins(list);
+      setScreen(list.length > 0 ? { kind: "walkin" } : { kind: "notListed" });
+    } catch {
+      setScreen({ kind: "error" });
+    }
+  };
+
+  const startRegister = async (reservationId: string) => {
+    try {
+      const { token } = await kioskApi<{ token: string }>(`/walkin/${reservationId}`, { method: "POST" });
+      setScreen({ kind: "register", token });
+    } catch {
+      setScreen({ kind: "error" });
+    }
+  };
+
+  const stayLabel = (checkIn: string, checkOut: string) => {
+    const f = (d: string) =>
+      new Intl.DateTimeFormat(lang, { month: "short", day: "numeric", weekday: "short", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
+    return fill(t.walkinStay, { checkin: f(checkIn), checkout: f(checkOut) });
   };
 
   const checkout = async (reservationId: string) => {
@@ -421,7 +455,7 @@ export function KioskApp() {
               </button>
             ))}
           </div>
-          <button className="kbtn small" onClick={() => setScreen({ kind: "notListed" })}>
+          <button className="kbtn small" onClick={openWalkin}>
             {t.notListed}
           </button>
         </div>
@@ -459,6 +493,52 @@ export function KioskApp() {
           {status?.hostContact[lang] && <p className="kiosk-contact">{status.hostContact[lang]}</p>}
           <button className="kbtn" onClick={() => setScreen({ kind: "checkin" })}>
             {t.back}
+          </button>
+        </div>
+      );
+      break;
+    case "walkin":
+      content = (
+        <div className="kiosk-center">
+          {backButton(() => setScreen({ kind: "checkin" }))}
+          <h2>{t.walkinTitle}</h2>
+          <p className="kiosk-guide">{t.walkinBody}</p>
+          <div className="kiosk-grid names">
+            {walkins.map((w) => (
+              <button key={w.reservationId} className="kbtn name" onClick={() => startRegister(w.reservationId)}>
+                {stayLabel(w.checkInDate, w.checkOutDate)}
+                {w.isTest && <span className="test-mark">テスト</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+      break;
+    case "register":
+      content = (
+        <div className="kiosk-register">
+          <div className="kiosk-register-bar">
+            <button
+              className="kbtn small"
+              onClick={async () => {
+                if (await confirmDialog(t.walkinCancelConfirm, { okLabel: t.walkinCancel })) setScreen({ kind: "checkin" });
+              }}
+            >
+              ← {t.walkinCancel}
+            </button>
+          </div>
+          <RegistrationApp role="r" token={screen.token} kiosk={{ lang, onSubmitted: () => setScreen({ kind: "registered" }) }} />
+        </div>
+      );
+      break;
+    case "registered":
+      content = (
+        <div className="kiosk-center">
+          <div className="kiosk-check">✓</div>
+          <h2>{t.registered}</h2>
+          <p className="kiosk-guide">{t.registeredBody}</p>
+          <button className="kbtn huge primary" onClick={openCheckin}>
+            {t.checkIn}
           </button>
         </div>
       );

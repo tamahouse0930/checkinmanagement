@@ -300,7 +300,7 @@ reservationRoutes.post("/reservations/:id/reject", async (c) => {
     db.prepare("UPDATE guests SET status = 'ready', updated_at = ? WHERE reservation_id = ? AND status = 'submitted'").bind(now, id),
     // 送信した時点で URL は使えなくなっているので、修正用の新しい URL を発行する（差し戻しの案内文に入る）
     db
-      .prepare("UPDATE reservations SET reg_status = 'rejected', reject_reason = ?, guest_token = ? WHERE id = ?")
+      .prepare("UPDATE reservations SET reg_status = 'rejected', reject_reason = ?, guest_token = ?, kiosk_registration = 0 WHERE id = ?")
       .bind(parsed.data.reason, randomToken(), id),
     countersStatement(db, id, now),
     auditStatement(db, `admin:${c.var.admin.email}`, "reject", id),
@@ -500,7 +500,7 @@ reservationRoutes.post("/reservations/:id/token", async (c) => {
   const id = c.req.param("id");
   const db = c.var.db;
   const result = await db.batch([
-    db.prepare("UPDATE reservations SET guest_token = ?, invite_sent_at = NULL, updated_at = ? WHERE id = ?").bind(randomToken(), nowIso(), id),
+    db.prepare("UPDATE reservations SET guest_token = ?, invite_sent_at = NULL, kiosk_registration = 0, updated_at = ? WHERE id = ?").bind(randomToken(), nowIso(), id),
     auditStatement(db, `admin:${c.var.admin.email}`, "regenerate_guest_token", id),
   ]);
   if ((result[0].meta.changes ?? 0) === 0) return c.json(notFound(), 404);

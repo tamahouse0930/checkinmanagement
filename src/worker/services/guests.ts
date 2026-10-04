@@ -41,6 +41,8 @@ export interface ReservationRow {
   checked_out_by: string | null;
   notified_unregistered_at: string | null;
   notified_overdue_at: string | null;
+  /** 玄関のタブレットから登録を始めた（送信したら自動で承認する。要件定義書 T-11） */
+  kiosk_registration: number;
   created_at: string;
   updated_at: string;
 }

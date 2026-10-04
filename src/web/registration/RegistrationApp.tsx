@@ -507,6 +507,8 @@ function GuestList(props: {
   lang: Lang;
   onEdit: (seq: number) => void;
   onSubmitted: () => Promise<void>;
+  /** 同行者用のリンクを共有するボタンを出す（玄関のタブレットでは出さない） */
+  allowShare: boolean;
 }) {
   const { t, view, api } = props;
   const [count, setCount] = useState(view.guestTotal || 1);
@@ -587,7 +589,7 @@ function GuestList(props: {
                 <button className="button" onClick={() => props.onEdit(seq)}>
                   {isApproved ? t.view : g && g.status !== "draft" ? t.edit : t.enter}
                 </button>
-                {seq > 1 && !isApproved && (
+                {props.allowShare && seq > 1 && !isApproved && (
                   <button className="button" onClick={() => share(seq)}>
                     {t.shareLink}
                   </button>
@@ -684,10 +686,22 @@ function SubmitBlock(props: {
 
 type Screen = { kind: "list" } | { kind: "edit"; seq: number };
 
-export function RegistrationApp({ role, token }: { role: "r" | "g"; token: string }) {
+/**
+ * kiosk: 玄関のタブレットの中で開くとき（要件定義書 T-11）。言語はタブレットで選んだもの、同行者用のリンクの共有はなし、
+ * 送信したらタブレットのチェックインに進む
+ */
+export function RegistrationApp({
+  role,
+  token,
+  kiosk,
+}: {
+  role: "r" | "g";
+  token: string;
+  kiosk?: { lang: Lang; onSubmitted: () => void };
+}) {
   const api = useApi(role === "r" ? "/api/r" : "/api/g", token);
   const loadPhoto = useLoadPhoto(role === "r" ? "/api/r" : "/api/g", token);
-  const [lang, setLangState] = useState<Lang>(initialLang);
+  const [lang, setLangState] = useState<Lang>(() => kiosk?.lang ?? initialLang());
   const [view, setView] = useState<RegistrationView | null>(null);
   const [failure, setFailure] = useState<"invalid" | "error" | null>(null);
   const [screen, setScreen] = useState<Screen>({ kind: "list" });
@@ -839,13 +853,16 @@ export function RegistrationApp({ role, token }: { role: "r" | "g"; token: strin
           <>
             {screen.kind === "list" && (
               <>
-                <p className="note">{t.repOnly}</p>
-                <div className="notices">
-                  <p>{t.noticeTablet}</p>
-                  <p>
-                    <strong>{t.noticeUnregistered}</strong>
-                  </p>
-                </div>
+                {!kiosk && <p className="note">{t.repOnly}</p>}
+                {/* 玄関のタブレットで登録している人には、事前登録やタブレットの案内は出さない */}
+                {!kiosk && (
+                  <div className="notices">
+                    <p>{t.noticeTablet}</p>
+                    <p>
+                      <strong>{t.noticeUnregistered}</strong>
+                    </p>
+                  </div>
+                )}
                 {view.regStatus === "submitted" && <p className="notice">{t.statusSubmitted}</p>}
                 {view.regStatus === "approved" && <p className="notice">{t.statusApproved}</p>}
                 {view.regStatus === "rejected" && (
@@ -861,8 +878,13 @@ export function RegistrationApp({ role, token }: { role: "r" | "g"; token: strin
                   reload={reload}
                   lang={lang}
                   onEdit={(seq) => setScreen({ kind: "edit", seq })}
+                  allowShare={!kiosk}
                   onSubmitted={async () => {
-                    // 送信すると URL は使えなくなるので、読み直さずに完了の画面にする
+                    // 送信すると URL は使えなくなるので、読み直さずに完了の画面にする（タブレットではチェックインに進む）
+                    if (kiosk) {
+                      kiosk.onSubmitted();
+                      return;
+                    }
                     setSubmitted(true);
                     window.scrollTo(0, 0);
                   }}

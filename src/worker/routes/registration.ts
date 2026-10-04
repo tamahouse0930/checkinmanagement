@@ -7,6 +7,7 @@ import { type GuestFields, normalizeGuest } from "../../shared/guest";
 import { isLang, LANGS, type Lang } from "../../shared/langs";
 import { parseMrz } from "../../shared/mrz";
 import type { AppEnv } from "../env";
+import { auditStatement } from "../lib/audit";
 import { randomToken } from "../lib/crypto";
 import { getSettings, getText } from "../lib/settings";
 import { nowIso } from "../lib/time";
@@ -336,7 +337,44 @@ representativeRoutes.post("/additions", async (c) => {
 });
 
 /**
- * 送信（要件定義書 G-13）。承認前は全員分、承認後は追加した人の分を送る
+ * 玄関のタブレットから始めた登録を、送信と同時に承認する SQL（要件定義書 T-11）。
+ * 承認を待たずに、そのままタブレットでチェックインできるようにする。ホストには、後から名簿と写真を確認してもらう
+ */
+function kioskApproveStatements(c: Context<AppEnv>, reservationId: string, now: string): D1PreparedStatement[] {
+  const db = c.var.db;
+  return [
+    db.prepare("UPDATE guests SET status = 'approved', approved_at = ?, updated_at = ? WHERE reservation_id = ? AND status = 'submitted'").bind(now, now, reservationId),
+    db
+      .prepare(
+        "UPDATE reservations SET reg_status = 'approved', approved_at = COALESCE(approved_at, ?), reject_reason = NULL, kiosk_registration = 0 WHERE id = ?",
+      )
+      .bind(now, reservationId),
+    auditStatement(db, "kiosk", "kiosk_registration", reservationId),
+  ];
+}
+
+/** タブレットで登録したことをホストに知らせる（自動で承認したので、名簿と写真の確認をお願いする） */
+function notifyKioskRegistration(c: Context<AppEnv>, r: ReservationRow, mismatch: number): void {
+  const origin = new URL(c.req.url).origin;
+  c.executionCtx.waitUntil(
+    notifyHost(c.env, c.var.db, {
+      isTest: r.is_test === 1,
+      subject: "タブレットで宿泊者の登録がありました（名簿と写真の確認をお願いします）",
+      text: [
+        `宿泊日: ${formatDateJa(r.check_in_date)} 〜 ${formatDateJa(r.check_out_date)}`,
+        `人数: ${r.guest_total}人`,
+        "玄関のタブレットで登録したため、自動で承認しました。続けてタブレットでチェックインします。",
+        ...(mismatch > 0 ? ["", `※ パスポート番号が写真から読み取った番号と違う人が ${mismatch} 人います。管理画面で確認してください`] : []),
+        "",
+        `確認: ${origin}/admin/reservations/${r.id}`,
+      ].join("\n"),
+    }),
+  );
+}
+
+/**
+ * 送信（要件定義書 G-13）。承認前は全員分、承認後は追加した人の分を送る。
+ * 玄関のタブレットから始めた登録は、送信と同時に承認する（T-11）
  */
 representativeRoutes.post("/submit", async (c) => {
   const r = c.var.reservation;
@@ -345,13 +383,21 @@ representativeRoutes.post("/submit", async (c) => {
     .safeParse(await c.req.json());
   if (!parsed.success) return error(c, 400, "bad_request", "consent_required");
   if (r.reg_status === "submitted") {
-    // 送信済みのまま発行し直した URL から、何も直さずに送信した場合も、URL は使えなくする
+    // 送信済みのまま発行し直した URL から、何も直さずに送信した場合も、URL は使えなくする。
+    // スマホで送信済み（承認待ち）の予約をタブレットで開いて送信した場合は、ここで承認する
     const db = c.var.db;
+    const now = nowIso();
+    const kiosk = r.kiosk_registration === 1;
     await db.batch([
       db.prepare("UPDATE reservations SET guest_token = NULL WHERE id = ?").bind(r.id),
       db.prepare("UPDATE guests SET entry_token = NULL WHERE reservation_id = ?").bind(r.id),
+      ...(kiosk ? [...kioskApproveStatements(c, r.id, now), countersStatement(db, r.id, now)] : []),
     ]);
-    return c.json({ ok: true });
+    if (kiosk) {
+      const guests = await loadGuests(db, r.id);
+      notifyKioskRegistration(c, r, guests.filter((g) => g.passport_check === "mismatch").length);
+    }
+    return c.json({ ok: true, approved: kiosk });
   }
 
   const db = c.var.db;
@@ -366,6 +412,7 @@ representativeRoutes.post("/submit", async (c) => {
   const now = nowIso();
   const lang = isLang(parsed.data.lang) ? parsed.data.lang : "en";
   const isAddition = r.reg_status === "approved";
+  const kiosk = r.kiosk_registration === 1;
   await db.batch([
     db.prepare("UPDATE guests SET status = 'submitted', updated_at = ? WHERE reservation_id = ? AND status = 'ready'").bind(now, r.id),
     isAddition
@@ -380,6 +427,7 @@ representativeRoutes.post("/submit", async (c) => {
     // 修正や同行者の追加が必要なときは、管理者が新しい URL を発行する（差し戻しのときは自動で発行する）
     db.prepare("UPDATE reservations SET guest_token = NULL WHERE id = ?").bind(r.id),
     db.prepare("UPDATE guests SET entry_token = NULL WHERE reservation_id = ?").bind(r.id),
+    ...(kiosk ? kioskApproveStatements(c, r.id, now) : []),
     countersStatement(db, r.id, now),
   ]);
 
@@ -389,6 +437,10 @@ representativeRoutes.post("/submit", async (c) => {
   const origin = new URL(c.req.url).origin;
   // パスポート番号が写真と違う人の数（見逃さないよう、通知にも書く。氏名は書かない。ゲストの画面には出さない）
   const mismatch = pending.filter((g) => g.passport_check === "mismatch").length;
+  if (kiosk) {
+    notifyKioskRegistration(c, r, mismatch);
+    return c.json({ ok: true, approved: true });
+  }
   c.executionCtx.waitUntil(
     notifyHost(c.env, db, {
       isTest: r.is_test === 1,
