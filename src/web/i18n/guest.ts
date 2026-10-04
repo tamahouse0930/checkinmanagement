@@ -102,6 +102,10 @@ const ja = {
   groupResume: "前に開いた入力画面を開く（{n}）",
   groupFull: "入力できる枠が残っていません。代表者に宿泊人数を確認してもらってください。",
   close: "閉じる",
+  idCameraGuide: "身分証の写真のページをタブレットの画面側にあるカメラに向けて、枠に合わせてください。撮影を押すと 3 秒後に撮ります。",
+  idCameraCheck: "文字がはっきり読めるか確認してください。",
+  idCameraUse: "この写真を使う",
+  idCameraError: "カメラを起動できませんでした。ホストに連絡してください。",
 };
 
 type Dict = typeof ja;
@@ -207,6 +211,10 @@ const en: Dict = {
   groupResume: "Open the page I opened before ({n})",
   groupFull: "There are no more open spots. Please ask the main guest to check the number of guests.",
   close: "Close",
+  idCameraGuide: "Hold the photo page of your ID toward the camera on the screen side of the tablet and fit it in the frame. The photo is taken 3 seconds after you tap the button.",
+  idCameraCheck: "Please check that the text is clearly readable.",
+  idCameraUse: "Use this photo",
+  idCameraError: "The camera could not be started. Please contact the host.",
 };
 
 const ko: Dict = {
@@ -310,6 +318,10 @@ const ko: Dict = {
   groupResume: "이전에 연 입력 화면 열기 ({n})",
   groupFull: "입력할 수 있는 자리가 남아 있지 않습니다. 대표자에게 숙박 인원을 확인해 달라고 해 주세요.",
   close: "닫기",
+  idCameraGuide: "신분증의 사진 페이지를 태블릿 화면 쪽에 있는 카메라에 향하게 하고 틀에 맞춰 주세요. 촬영을 누르면 3초 후에 촬영합니다.",
+  idCameraCheck: "글자가 선명하게 읽히는지 확인해 주세요.",
+  idCameraUse: "이 사진 사용",
+  idCameraError: "카메라를 시작할 수 없습니다. 호스트에게 연락해 주세요.",
 };
 
 const zhHans: Dict = {
@@ -413,6 +425,10 @@ const zhHans: Dict = {
   groupResume: "打开之前的填写页面（{n}）",
   groupFull: "已没有可填写的名额。请让预订代表人确认入住人数。",
   close: "关闭",
+  idCameraGuide: "请将证件的照片页对准平板电脑屏幕一侧的摄像头，并对齐框线。点击拍摄后 3 秒自动拍照。",
+  idCameraCheck: "请确认文字是否清晰可读。",
+  idCameraUse: "使用这张照片",
+  idCameraError: "无法启动摄像头。请联系房东。",
 };
 
 const zhHant: Dict = {
@@ -516,6 +532,10 @@ const zhHant: Dict = {
   groupResume: "開啟之前的填寫頁面（{n}）",
   groupFull: "已沒有可填寫的名額。請讓訂房代表人確認入住人數。",
   close: "關閉",
+  idCameraGuide: "請將證件的照片頁對準平板電腦螢幕一側的相機，並對齊框線。點擊拍攝後 3 秒自動拍照。",
+  idCameraCheck: "請確認文字是否清晰可讀。",
+  idCameraUse: "使用這張照片",
+  idCameraError: "無法啟動相機。請聯絡房東。",
 };
 
 export type GuestText = Dict;

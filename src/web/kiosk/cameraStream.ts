@@ -1,6 +1,6 @@
 /**
  * 玄関タブレットのカメラ。撮影のたびに起動し直すと、ブラウザによっては毎回許可を求められるため、
- * 一度起動したカメラを使い回す。5 分間使われなければ止める（カメラのランプを点けたままにしないため）
+ * 一度起動したカメラを使い回す。身分証の文字も読めるよう、解像度は高めに求める（保存するときに縮小する）。5 分間使われなければ止める（カメラのランプを点けたままにしないため）
  */
 
 const IDLE_STOP_MS = 5 * 60 * 1000;
@@ -22,7 +22,7 @@ export async function acquireCamera(): Promise<MediaStream> {
   if (isLive(stream)) return stream;
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("camera_unavailable");
   pending ??= navigator.mediaDevices
-    .getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false })
+    .getUserMedia({ video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false })
     .then((s) => {
       stream = s;
       return s;

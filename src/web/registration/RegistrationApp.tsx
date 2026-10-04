@@ -6,6 +6,7 @@ import { detectLang, isLang, LANG_NAME, LANGS, type Lang } from "../../shared/la
 import { fill, GUEST_TEXT, type GuestText } from "../i18n/guest";
 import { BirthDateSelect } from "./BirthDateSelect";
 import { CountrySelect } from "./CountrySelect";
+import { IdCamera } from "./IdCamera";
 import { PrivacyLink } from "./PrivacyDialog";
 import { alpha3ToAlpha2, type MrzResult } from "../../shared/mrz";
 import { resizeImage } from "./photo";
@@ -98,10 +99,13 @@ function PhotoField(props: {
   uploadPath: string;
   photoId: string | null;
   disabled: boolean;
+  /** 玄関のタブレットでは、ファイルの選択ではなく前面のカメラを画面の中で起動する（タブレットを動かせないため） */
+  useCamera: boolean;
   onUploaded: (photoId: string) => void;
 }) {
   const { t, api } = props;
   const [preview, setPreview] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [state, setState] = useState<"idle" | "uploading" | "saved" | "failed">("idle");
   const input = useRef<HTMLInputElement>(null);
 
@@ -120,7 +124,7 @@ function PhotoField(props: {
     };
   }, [props.photoId]);
 
-  const onFile = async (file: File | undefined) => {
+  const onFile = async (file: Blob | undefined) => {
     if (!file) return;
     setState("uploading");
     try {
@@ -150,9 +154,24 @@ function PhotoField(props: {
         onChange={(e) => onFile(e.target.files?.[0])}
       />
       {!props.disabled && (
-        <button type="button" className="button" onClick={() => input.current?.click()} disabled={state === "uploading"}>
+        <button
+          type="button"
+          className="button"
+          onClick={() => (props.useCamera ? setCameraOpen(true) : input.current?.click())}
+          disabled={state === "uploading"}
+        >
           {state === "uploading" ? t.uploading : props.photoId || preview ? t.retakePhoto : t.takePhoto}
         </button>
+      )}
+      {cameraOpen && (
+        <IdCamera
+          t={t}
+          onClose={() => setCameraOpen(false)}
+          onCaptured={(blob) => {
+            setCameraOpen(false);
+            void onFile(blob);
+          }}
+        />
       )}
       {state === "saved" && <p className="notice">{t.photoSaved}</p>}
       {state === "failed" && <p className="alert">{t.photoFailed}</p>}
@@ -174,6 +193,8 @@ function GuestEditor(props: {
   /** 16 歳未満かどうかは、チェックイン日の時点の年齢で決める */
   checkInDate: string;
   readOnly: boolean;
+  /** 玄関のタブレットで入力している（身分証は前面のカメラで撮る） */
+  kiosk: boolean;
   onSaved: () => Promise<void>;
   onBack: () => void;
 }) {
@@ -328,6 +349,7 @@ function GuestEditor(props: {
                 uploadPath={isCompanion ? "/photos" : `/photos?seq=${seq}`}
                 photoId={g.idPhotoId}
                 disabled={disabled}
+                useCamera={props.kiosk}
                 onUploaded={(id) => {
                   set("idPhotoId", id);
                   if (g.isJapanese === false) void readFromPassport(id);
@@ -847,6 +869,7 @@ export function RegistrationApp({
                 representative={undefined}
                 checkInDate={view.checkInDate}
                 readOnly={companionLocked}
+                kiosk={false}
                 onSaved={reload}
                 onBack={() => {
                   setCompanionEditing(false);
@@ -910,6 +933,7 @@ export function RegistrationApp({
                 representative={screen.seq > 1 ? representative : undefined}
                 checkInDate={view.checkInDate}
                 readOnly={view.guests.find((g) => g.seq === screen.seq)?.status === "approved"}
+                kiosk={!!kiosk}
                 onSaved={reload}
                 onBack={() => {
                   setScreen({ kind: "list" });
