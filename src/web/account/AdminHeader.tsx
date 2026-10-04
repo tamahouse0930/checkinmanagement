@@ -10,8 +10,7 @@ export function AdminHeader(props: {
   me: AccountMe;
   current: "facility" | "system";
   title: string;
-  /** badge: 項目の横に出す件数（未対応のメモなど）。0 なら出さない */
-  nav: { path: string; label: string; badge?: number }[];
+  nav: { path: string; label: string }[];
   isActive: (path: string) => boolean;
 }) {
   const { me } = props;
@@ -42,7 +41,6 @@ export function AdminHeader(props: {
               }}
             >
               {item.label}
-              {!!item.badge && <span className="nav-badge" aria-label={`未対応 ${item.badge} 件`}>{item.badge}</span>}
             </a>
           ))}
         </nav>
