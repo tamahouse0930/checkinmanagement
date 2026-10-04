@@ -107,6 +107,8 @@ const ja = {
   idCameraUse: "この写真を使う",
   idCameraError: "カメラを起動できませんでした。ホストに連絡してください。",
   kioskRegister: "登録して顔写真の撮影へ",
+  occupationOther: "その他",
+  occupationOtherInput: "職業（その他）を入力してください",
 };
 
 type Dict = typeof ja;
@@ -217,6 +219,8 @@ const en: Dict = {
   idCameraUse: "Use this photo",
   idCameraError: "The camera could not be started. Please contact the host.",
   kioskRegister: "Register and take a face photo",
+  occupationOther: "Other",
+  occupationOtherInput: "Please enter your occupation",
 };
 
 const ko: Dict = {
@@ -325,6 +329,8 @@ const ko: Dict = {
   idCameraUse: "이 사진 사용",
   idCameraError: "카메라를 시작할 수 없습니다. 호스트에게 연락해 주세요.",
   kioskRegister: "등록하고 얼굴 사진 촬영으로",
+  occupationOther: "기타",
+  occupationOtherInput: "직업을 입력해 주세요",
 };
 
 const zhHans: Dict = {
@@ -433,6 +439,8 @@ const zhHans: Dict = {
   idCameraUse: "使用这张照片",
   idCameraError: "无法启动摄像头。请联系房东。",
   kioskRegister: "登记并拍摄面部照片",
+  occupationOther: "其他",
+  occupationOtherInput: "请输入您的职业",
 };
 
 const zhHant: Dict = {
@@ -541,6 +549,8 @@ const zhHant: Dict = {
   idCameraUse: "使用這張照片",
   idCameraError: "無法啟動相機。請聯絡房東。",
   kioskRegister: "登記並拍攝臉部照片",
+  occupationOther: "其他",
+  occupationOtherInput: "請輸入您的職業",
 };
 
 export type GuestText = Dict;

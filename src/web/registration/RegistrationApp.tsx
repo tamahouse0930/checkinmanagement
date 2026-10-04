@@ -9,6 +9,7 @@ import { CountrySelect } from "./CountrySelect";
 import { IdCamera } from "./IdCamera";
 import { PrivacyLink } from "./PrivacyDialog";
 import { alpha3ToAlpha2, type MrzResult } from "../../shared/mrz";
+import { isOccupationChoice, OCCUPATIONS } from "../../shared/occupations";
 import { resizeImage } from "./photo";
 import { useDocumentTitle } from "../lib/title";
 
@@ -229,6 +230,8 @@ function GuestEditor(props: {
     () => seq > 1 && !!representative && !!props.guest?.contact && props.guest.contact === representative.contact,
   );
   const [consent, setConsent] = useState(props.guest?.consented ?? false);
+  /** 職業で「その他」を選んでいる（選択肢にない値が保存されていれば「その他」として表示する） */
+  const [otherOccupation, setOtherOccupation] = useState(() => !!props.guest?.occupation && !isOccupationChoice(props.guest.occupation));
   const [showMissing, setShowMissing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -455,10 +458,34 @@ function GuestEditor(props: {
               </>
             )}
 
+            {/* 職業は選択式。どれにも当たらなければ「その他」を選んで入力する */}
             <label className={bad("occupation")}>
               {t.occupation}
-              <input value={g.occupation} onChange={(e) => set("occupation", e.target.value)} maxLength={100} />
+              <select
+                value={otherOccupation ? "__other" : isOccupationChoice(g.occupation) ? g.occupation : ""}
+                onChange={(e) => {
+                  const other = e.target.value === "__other";
+                  setOtherOccupation(other);
+                  set("occupation", other ? "" : e.target.value);
+                }}
+              >
+                <option value="" disabled>
+                  {t.select}
+                </option>
+                {OCCUPATIONS.map((o) => (
+                  <option key={o.ja} value={o.ja}>
+                    {o.label[lang]}
+                  </option>
+                ))}
+                <option value="__other">{t.occupationOther}</option>
+              </select>
             </label>
+            {otherOccupation && (
+              <label className={bad("occupation")}>
+                {t.occupationOtherInput}
+                <input value={g.occupation} onChange={(e) => set("occupation", e.target.value)} maxLength={100} />
+              </label>
+            )}
 
             {seq > 1 && representative && (
               <label className="check">
