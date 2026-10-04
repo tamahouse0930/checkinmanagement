@@ -1320,12 +1320,16 @@ label.check.inline {
   display: none;
 }
 
+/*
+ * 顔の枠。タブレットから少し離れて（肩まで写るくらいで）撮れる大きさにする。
+ * 大きくすると、枠を満たすためにタブレットにかなり近づく必要がある。肩が入るよう、少し上に寄せる
+ */
 .face-frame {
   position: absolute;
   left: 50%;
-  top: 50%;
-  width: 42%;
-  height: 72%;
+  top: 45%;
+  width: 28%;
+  height: 48%;
   transform: translate(-50%, -50%);
   border: 4px dashed rgba(255, 255, 255, 0.9);
   border-radius: 50%;
