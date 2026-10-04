@@ -71,22 +71,41 @@ function useLockdown() {
     addHead("meta", { name: "apple-mobile-web-app-capable", content: "yes" });
     addHead("meta", { name: "mobile-web-app-capable", content: "yes" });
 
+    document.documentElement.classList.add("kiosk-html");
     document.body.classList.add("kiosk-body");
     const prevent = (e: Event) => e.preventDefault();
     document.addEventListener("contextmenu", prevent);
     document.addEventListener("gesturestart", prevent);
     document.addEventListener("dragstart", prevent);
-    history.pushState(null, "", location.href);
+
+    // 画面の左右の端から始まるスワイプを止める（Safari の「戻る」「進む」のスワイプが起きないように）
+    // 「← 戻る」ボタン（左端から 16px）に重ならない幅にする
+    const EDGE = 16;
+    const onTouchStart = (e: TouchEvent) => {
+      const x = e.touches[0]?.clientX ?? EDGE;
+      if (x < EDGE || x > window.innerWidth - EDGE) e.preventDefault();
+    };
+    document.addEventListener("touchstart", onTouchStart, { passive: false });
+
+    // Android の戻るボタンで画面を離れないよう、履歴を 1 つ足して戻る操作を打ち消す。
+    // iPad・iPhone では、足した履歴に右スワイプで「戻る」動きが始まり、何もない画面が一瞬見えてしまうため行わない
+    // （ホーム画面から開けば戻る先がないので、右スワイプしても何も起きない）
+    const isApple = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
     const onPop = () => history.pushState(null, "", location.href);
-    window.addEventListener("popstate", onPop);
+    if (!isApple) {
+      history.pushState(null, "", location.href);
+      window.addEventListener("popstate", onPop);
+    }
 
     return () => {
       if (previous) viewport?.setAttribute("content", previous);
       added.forEach((el) => el.remove());
+      document.documentElement.classList.remove("kiosk-html");
       document.body.classList.remove("kiosk-body");
       document.removeEventListener("contextmenu", prevent);
       document.removeEventListener("gesturestart", prevent);
       document.removeEventListener("dragstart", prevent);
+      document.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("popstate", onPop);
     };
   }, []);
