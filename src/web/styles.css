@@ -1740,3 +1740,52 @@ label.check.inline {
 .alert-text {
   color: var(--danger);
 }
+
+/* 画面の中に出す確認・入力のダイアログ（lib/dialog.tsx）。ブラウザの confirm は端末の設定で表示されないことがあるため */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.dialog-message {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+.dialog textarea {
+  font: inherit;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.button.danger-fill {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}

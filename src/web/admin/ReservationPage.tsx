@@ -7,6 +7,7 @@ import { birthDateLabel, type GuestView } from "../../shared/guest";
 import { LANG_NAME, LANGS, type Lang } from "../../shared/langs";
 import { CHANNEL_LABEL, PROGRESS_LABEL } from "../../shared/progress";
 import { api } from "../lib/api";
+import { confirmDialog, promptDialog } from "../lib/dialog";
 import { navigate } from "../lib/router";
 
 const GUEST_STATUS: Record<GuestView["status"], string> = {
@@ -51,7 +52,7 @@ function MessageBlock(props: {
   };
 
   const unmark = async () => {
-    if (!props.markPath || !confirm("送信済みの印を外しますか？")) return;
+    if (!props.markPath || !(await confirmDialog("送信済みの印を外しますか？", { okLabel: "外す" }))) return;
     await api(props.markPath, { method: "DELETE" });
     await props.onChanged();
   };
@@ -118,9 +119,13 @@ function GuestCard({
   const [editing, setEditing] = useState(false);
   const photoInput = useRef<HTMLInputElement>(null);
 
-  const remove = () => {
-    const reason = prompt(`${g.fullName || `${g.seq}人目`} を名簿から削除します。理由を入力してください（来なかった、など）`);
-    if (!reason?.trim()) return;
+  const remove = async () => {
+    const reason = await promptDialog(`${g.fullName || `${g.seq}人目`} を名簿から削除します。理由を入力してください（氏名は書かないでください）`, {
+      okLabel: "削除する",
+      danger: true,
+      placeholder: "例: 来なかった",
+    });
+    if (!reason) return;
     act(() => api(`/api/admin/guests/${g.id}`, { method: "DELETE", body: { reason } }), "宿泊者を削除しました");
   };
 
@@ -287,8 +292,8 @@ function VerifySection(props: { r: ReservationDetail; act: (action: () => Promis
   const approved = r.guests.filter((g) => g.status === "approved");
   const checkedIn = approved.filter((g) => g.checkedInAt);
 
-  const verify = () => {
-    if (!confirm("全員の写真を確認して、照合 OK にしますか？")) return;
+  const verify = async () => {
+    if (!(await confirmDialog("全員の写真を確認して、照合 OK にしますか？", { okLabel: "照合 OK にする" }))) return;
     act(() => api(`/api/admin/reservations/${r.id}/verify-photos`, { method: "POST", body: { result: "ok" } }), "照合 OK にしました");
   };
   const mismatch = () =>
@@ -297,12 +302,12 @@ function VerifySection(props: { r: ReservationDetail; act: (action: () => Promis
       setShowMismatch(false);
     }, "不一致を記録しました。駆けつけの担当者に連絡してください");
   const undoVerify = () => act(() => api(`/api/admin/reservations/${r.id}/verify-photos`, { method: "DELETE" }), "照合の記録を取り消しました");
-  const checkout = () => {
-    if (!confirm("管理者の操作でチェックアウト済みにしますか？")) return;
+  const checkout = async () => {
+    if (!(await confirmDialog("管理者の操作でチェックアウト済みにしますか？", { okLabel: "チェックアウト済みにする" }))) return;
     act(() => api(`/api/admin/reservations/${r.id}/checkout`, { method: "POST" }), "チェックアウト済みにしました");
   };
-  const undoCheckout = () => {
-    if (!confirm("チェックアウトを取り消しますか？")) return;
+  const undoCheckout = async () => {
+    if (!(await confirmDialog("チェックアウトを取り消しますか？", { okLabel: "取り消す" }))) return;
     act(() => api(`/api/admin/reservations/${r.id}/checkout`, { method: "DELETE" }), "チェックアウトを取り消しました");
   };
 
@@ -433,6 +438,8 @@ export function ReservationPage({ id }: { id: string }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
+    // 結果は予約の情報のすぐ下に出すので、下の方のボタンを押したときにも見えるよう、そこまで動かす
+    requestAnimationFrame(() => document.querySelector(".action-result")?.scrollIntoView({ behavior: "smooth", block: "center" }));
   };
 
   if (error && !r) return <p className="alert">{error}</p>;
@@ -447,8 +454,8 @@ export function ReservationPage({ id }: { id: string }) {
   const reissue = () =>
     act(() => api(`/api/admin/reservations/${id}/token`, { method: "POST" }), "修正用の URL を発行しました。案内文をコピーして送ってください");
 
-  const regenerate = () => {
-    if (!confirm("URL を作り直しますか？ 今の URL は使えなくなります。")) return;
+  const regenerate = async () => {
+    if (!(await confirmDialog("URL を作り直しますか？ 今の URL は使えなくなります。", { okLabel: "作り直す" }))) return;
     act(() => api(`/api/admin/reservations/${id}/token`, { method: "POST" }), "URL を作り直しました");
   };
 
@@ -461,7 +468,7 @@ export function ReservationPage({ id }: { id: string }) {
     const text = r.isTest
       ? "このテスト予約を削除しますか？ 名簿と写真（Google ドライブのフォルダ）もすべて削除します。"
       : `この宿泊を削除しますか？${hasGuestData ? "\n登録された名簿と写真もすべて削除します。" : ""}`;
-    if (!confirm(text)) return;
+    if (!(await confirmDialog(text, { okLabel: "削除する", danger: true }))) return;
     try {
       await api(`/api/admin/reservations/${id}`, { method: "DELETE" });
       backToMonth();
@@ -470,12 +477,12 @@ export function ReservationPage({ id }: { id: string }) {
     }
   };
 
-  const approve = () => {
+  const approve = async () => {
     const pending = r.guests.filter((g) => g.status === "submitted");
     const pendingNames = pending.map((g) => g.fullName).join("、");
     const pendingMismatch = pending.filter((g) => g.passportCheck === "mismatch").map((g) => g.fullName);
     const warning = pendingMismatch.length > 0 ? `\n\n※ パスポート番号が写真と違う人がいます: ${pendingMismatch.join("、")}` : "";
-    if (!confirm(`次の方の登録を承認しますか？\n${pendingNames}${warning}`)) return;
+    if (!(await confirmDialog(`次の方の登録を承認しますか？\n${pendingNames}${warning}`, { okLabel: "承認する" }))) return;
     act(() => api(`/api/admin/reservations/${id}/approve`, { method: "POST" }), "承認しました。暗証番号を設定して、案内文を送ってください");
   };
 
@@ -573,8 +580,8 @@ export function ReservationPage({ id }: { id: string }) {
         )}
       </section>
 
-      {message && <p className="notice">{message}</p>}
-      {error && <p className="alert">{error}</p>}
+      {message && <p className="notice action-result">{message}</p>}
+      {error && <p className="alert action-result">{error}</p>}
 
       {r.status === "confirmed" && !r.guestUrl && r.regStatus !== "none" && r.checkOutDate >= jstNow().date && (
         <section className="card">

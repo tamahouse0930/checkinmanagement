@@ -126,17 +126,11 @@ authRoutes.get("/callback", async (c) => {
     const sid = randomToken();
     const payload = newSessionPayload(sid, claims.email);
 
-    // 同じ端末の古いログインはログアウトさせる（ログイン中の端末に同じ端末が並ばないように）。
-    // 同じアカウント・同じ User-Agent のものと、このブラウザに残っていた古いログインの Cookie のもの
+    // このブラウザに古いログインの Cookie が残っていれば、そのログインはログアウトさせる（同じブラウザで確実に置き換わるもの）。
+    // User-Agent が同じでも別のログインとは限らない（iPhone の Safari と、メールアプリの中のブラウザ、ホーム画面のアプリは
+    // User-Agent がほぼ同じで、ログインは別々）ため、User-Agent では判定しない（使っている別のログインを切ってしまうため）
     const oldCookie = await decodeSession(c.env.SESSION_SECRET, getCookie(c, SESSION_COOKIE));
-    const sameDevice = await db.all<{ id: string; expires_at: string }>(
-      db
-        .prepare("SELECT id, expires_at FROM admin_sessions WHERE email = ? AND user_agent IS ? AND expires_at > ? LIMIT 20")
-        .bind(claims.email, userAgent, nowIso()),
-    );
-    const old = new Map(sameDevice.map((r) => [r.id, Date.parse(r.expires_at)]));
-    if (oldCookie) old.set(oldCookie.sid, oldCookie.exp);
-    const replaced = [...old].map(([oldSid, exp]) => ({ sid: oldSid, exp }));
+    const replaced = oldCookie ? [{ sid: oldCookie.sid, exp: oldCookie.exp }] : [];
 
     await db.batch([
       ...(replaced.length > 0

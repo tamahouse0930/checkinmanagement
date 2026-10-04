@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../lib/api";
+import { confirmDialog } from "../lib/dialog";
 
 /** 施設の管理画面とシステム管理の画面の両方で使う部品（設計書 7.1） */
 
@@ -56,10 +57,12 @@ export function EmailListSection(props: {
   const sendInvite = (target: string) =>
     api(`${props.endpoint}/${encodeURIComponent(target)}/invite`, { method: "POST" });
 
-  const add = (e: FormEvent) => {
+  const add = async (e: FormEvent) => {
     e.preventDefault();
     const target = email.trim();
-    const withInvite = props.invite === true && confirm(`${target} に、管理画面の URL とログインの方法を書いた案内メールも送りますか？`);
+    const withInvite =
+      props.invite === true &&
+      (await confirmDialog(`${target} に、管理画面の URL とログインの方法を書いた案内メールも送りますか？`, { okLabel: "送る" }));
     run(
       async () => {
         await api(props.endpoint, { method: "POST", body: { email, name } });
@@ -72,13 +75,13 @@ export function EmailListSection(props: {
     );
   };
 
-  const invite = (target: string) => {
-    if (!confirm(`${target} に、管理画面の URL とログインの方法を書いた案内メールを送りますか？`)) return;
+  const invite = async (target: string) => {
+    if (!(await confirmDialog(`${target} に、管理画面の URL とログインの方法を書いた案内メールを送りますか？`, { okLabel: "送る" }))) return;
     run(() => sendInvite(target), `${target} に案内メールを送りました`);
   };
 
-  const remove = (target: string) => {
-    if (!confirm(`${target} を削除しますか？`)) return;
+  const remove = async (target: string) => {
+    if (!(await confirmDialog(`${target} を削除しますか？`, { okLabel: "削除する", danger: true }))) return;
     run(async () => {
       await api(`${props.endpoint}/${encodeURIComponent(target)}`, { method: "DELETE" });
       await reload();

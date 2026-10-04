@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import type { SystemStatus } from "../../shared/api-types";
 import { jstNow } from "../../shared/dates";
 import { api } from "../lib/api";
+import { confirmDialog } from "../lib/dialog";
 import { describeUserAgent } from "../../shared/user-agent";
 import { formatDate, Message, useMessage } from "./common";
 
@@ -24,8 +25,8 @@ export function SessionsSection() {
     load();
   }, []);
 
-  const revoke = (id: string) => {
-    if (!confirm("この端末をログアウトさせますか？")) return;
+  const revoke = async (id: string) => {
+    if (!(await confirmDialog("この端末をログアウトさせますか？", { okLabel: "ログアウトさせる", danger: true }))) return;
     run(async () => {
       await api(`/api/account/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
       await load();

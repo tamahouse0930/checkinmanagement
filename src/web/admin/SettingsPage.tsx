@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { LANG_NAME, LANGS, type Lang } from "../../shared/langs";
 import { TEXT_KIND_LABEL, TEXT_KINDS, TEXT_PLACEHOLDERS, type TextKind } from "../../shared/templates";
 import { api } from "../lib/api";
+import { confirmDialog } from "../lib/dialog";
 import { navigate } from "../lib/router";
 import { formatDate, Message, useMessage } from "../account/common";
 import { SessionsSection, SystemStatusSection } from "../account/sections";
@@ -309,8 +310,8 @@ export function DevicesSection({ onChanged }: { onChanged?: () => void }) {
       setPairing(await api<{ code: string; expiresAt: string }>("/api/admin/devices/pairing", { method: "POST", body: { name } }));
     }, "登録用のコードを発行しました");
 
-  const revoke = (d: DeviceRow) => {
-    if (!confirm(`${d.name} の登録を取り消しますか？ このタブレットではチェックイン画面が使えなくなります。`)) return;
+  const revoke = async (d: DeviceRow) => {
+    if (!(await confirmDialog(`${d.name} の登録を取り消しますか？ このタブレットではチェックイン画面が使えなくなります。`, { okLabel: "取り消す", danger: true }))) return;
     run(async () => {
       await api(`/api/admin/devices/${d.id}`, { method: "DELETE" });
       await load();
