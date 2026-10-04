@@ -162,6 +162,8 @@ export async function purgeHousekeeping(db: Db): Promise<void> {
     db.prepare("DELETE FROM admin_sessions WHERE expires_at < ?").bind(new Date(now).toISOString()),
     db.prepare("DELETE FROM job_runs WHERE run_date < ?").bind(addDays(jstNow().date, -30)),
     db.prepare("DELETE FROM audit_logs WHERE created_at < ?").bind(new Date(now - 3 * 365 * DAY_MS).toISOString()),
+    // 対応済みの全体メモは 90 日で削除する
+    db.prepare("DELETE FROM memos WHERE done_at < ?").bind(new Date(now - 90 * DAY_MS).toISOString()),
   ]);
 }
 

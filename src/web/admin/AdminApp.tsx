@@ -1,10 +1,13 @@
+import { useCallback, useEffect, useState } from "react";
 import type { AccountMe } from "../../shared/api-types";
 import { AdminHeader } from "../account/AdminHeader";
 import { AccountPending, NoPermission, useAccount } from "../account/useAccount";
+import { api } from "../lib/api";
 import { usePathname } from "../lib/router";
 import { useDocumentTitle } from "../lib/title";
 import { CalendarPage } from "./CalendarPage";
 import { LedgerPage, LedgerStayPage } from "./LedgerPage";
+import { MemoPage } from "./MemoPage";
 import { RegisterPrintPage } from "./RegisterPrintPage";
 import { ReservationForm } from "./ReservationForm";
 import { ReservationPage } from "./ReservationPage";
@@ -14,6 +17,7 @@ import { SetupPage } from "./SetupPage";
 const NAV = [
   { path: "/admin", label: "カレンダー" },
   { path: "/admin/photos", label: "名簿管理" },
+  { path: "/admin/memos", label: "メモ" },
   { path: "/admin/settings", label: "設定" },
 ];
 
@@ -24,7 +28,18 @@ function isActive(path: string, pathname: string): boolean {
   return pathname === path || pathname.startsWith(`${path}/`);
 }
 
-function AdminRoute({ pathname, me, onPropertySaved }: { pathname: string; me: AccountMe; onPropertySaved: () => void }) {
+function AdminRoute({
+  pathname,
+  me,
+  onPropertySaved,
+  onMemosChanged,
+}: {
+  pathname: string;
+  me: AccountMe;
+  onPropertySaved: () => void;
+  onMemosChanged: () => void;
+}) {
+  if (pathname === "/admin/memos") return <MemoPage onChanged={onMemosChanged} />;
   if (pathname === "/admin/settings") return <SettingsPage me={me} />;
   if (pathname === "/admin/setup") return <SetupPage onPropertySaved={onPropertySaved} />;
   if (pathname === "/admin/photos") return <LedgerPage />;
@@ -44,6 +59,18 @@ export function AdminApp() {
   const pathname = usePathname();
   const account = useAccount();
   useDocumentTitle(account.me?.propertyName);
+  /** 未対応のメモの件数（メニューに出す。メールは送らないので、ここで気づけるようにする） */
+  const [openMemos, setOpenMemos] = useState(0);
+  const facility = account.state === "ready" && account.me.roles.facility;
+  const loadMemoCount = useCallback(() => {
+    api<{ open: number }>("/api/admin/memos/count")
+      .then((r) => setOpenMemos(r.open))
+      .catch(() => undefined);
+  }, []);
+  // 画面を移るたびに数え直す（他の管理者が書いたメモにも気づけるように）
+  useEffect(() => {
+    if (facility) loadMemoCount();
+  }, [facility, pathname, loadMemoCount]);
 
   if (account.state !== "ready") return <AccountPending state={account.state} />;
   const { me } = account;
@@ -51,9 +78,9 @@ export function AdminApp() {
 
   return (
     <div className="admin">
-      <AdminHeader me={me} current="facility" title={me.propertyName} nav={NAV} isActive={(path) => isActive(path, pathname)} />
+      <AdminHeader me={me} current="facility" title={me.propertyName} nav={NAV.map((item) => (item.path === "/admin/memos" ? { ...item, badge: openMemos } : item))} isActive={(path) => isActive(path, pathname)} />
       <main className="admin-main" key={pathname + location.search}>
-        <AdminRoute pathname={pathname} me={me} onPropertySaved={account.reload} />
+        <AdminRoute pathname={pathname} me={me} onPropertySaved={account.reload} onMemosChanged={loadMemoCount} />
       </main>
     </div>
   );

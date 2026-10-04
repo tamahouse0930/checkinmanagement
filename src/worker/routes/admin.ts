@@ -10,6 +10,7 @@ import { loadSetupStatus } from "../services/setup";
 import { forgetDevice } from "./kiosk";
 import { adminGuestRoutes } from "./admin-guests";
 import { ledgerRoutes } from "./ledger";
+import { memoRoutes } from "./memos";
 import { reservationRoutes } from "./reservations";
 import { LANGS } from "../../shared/langs";
 import { DEFAULT_TEXTS, TEXT_KINDS, textMaxLength, type TextKind } from "../../shared/templates";
@@ -21,6 +22,7 @@ adminRoutes.use("*", requireFacility);
 adminRoutes.route("/", reservationRoutes);
 adminRoutes.route("/", adminGuestRoutes);
 adminRoutes.route("/", ledgerRoutes);
+adminRoutes.route("/", memoRoutes);
 
 function badRequest(message: string) {
   return { error: { code: "bad_request", message } };
