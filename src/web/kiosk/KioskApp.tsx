@@ -356,11 +356,14 @@ export function KioskApp() {
 
   const startRegister = async (reservationId: string) => {
     try {
-      const { token, pending } = await kioskApi<{ token: string; pending: boolean }>(`/walkin/${reservationId}`, { method: "POST" });
+      const { token, pending, approvedNow } = await kioskApi<{ token: string; pending: boolean; approvedNow: boolean }>(`/walkin/${reservationId}`, {
+        method: "POST",
+      });
       walkinRef.current = { token, cancelSeq: null };
-      // スマホで送信済みだった人はここで承認され、一覧に名前が出る。登録が済んでいない人がいなければ一覧に戻る
-      if (pending) await nextGuest();
-      else await openCheckin();
+      // スマホで送信済みだった人はここで承認され、一覧に名前が出る。それで全員がそろったら一覧に戻る。
+      // それ以外は 1 人分の入力に進む（名簿がそろった予約なら、人数を 1 人増やして追加で登録する）
+      if (approvedNow && !pending) await openCheckin();
+      else await nextGuest();
     } catch {
       setScreen({ kind: "error" });
     }

@@ -233,8 +233,9 @@ function checkoutListStatement(c: Context<KioskEnv>) {
 }
 
 /**
- * タブレットで登録できる予約（要件定義書 T-11）。当日の予約のうち、登録が済んでいないもの（承認前、または承認後に
- * 入力が済んでいない人がいるもの）。氏名は出さず、日程だけで選んでもらう（本人確認はしない。室内のタブレットのため）
+ * タブレットで登録できる予約（要件定義書 T-05）。当日の予約でチェックアウト前のものすべて
+ * （名簿がそろった予約でも、一覧に名前がない人を追加で登録できるようにする）。
+ * 氏名は出さず、日程だけで選んでもらう（本人確認はしない。室内のタブレットのため）
  */
 function walkinStatement(c: Context<KioskEnv>) {
   const today = jstNow().date;
@@ -242,7 +243,6 @@ function walkinStatement(c: Context<KioskEnv>) {
     .prepare(
       `SELECT id, check_in_date, check_out_date, is_test, guest_token FROM reservations
        WHERE check_out_date >= ?1 AND check_in_date <= ?1 AND status = 'confirmed' AND stay_status <> 'checked_out'
-         AND (reg_status <> 'approved' OR guest_ready < guest_total)
        ORDER BY check_in_date LIMIT 10`,
     )
     .bind(today);
@@ -259,7 +259,8 @@ kioskRoutes.get("/walkin", async (c) => {
  * タブレットで登録を始める（要件定義書 T-05）。宿泊者入力画面の API のトークンを返し、タブレットの中で 1 人ずつ入力する。
  * スマホで途中まで入力していれば、同じトークン（同じ入力）の続きから始める。
  * スマホで送信済み（承認待ち）の人は、本人が来ているのでここで承認し、そのままチェックインの一覧に出す。
- * pending: まだ登録が済んでいない枠があるか（なければ、タブレットはチェックインの一覧に戻る）
+ * pending: まだ登録が済んでいない枠があるか。approvedNow: 送信済みだった人をここで承認したか
+ * （承認した人で全員がそろったら、タブレットはチェックインの一覧に戻る。それ以外は 1 人分の入力に進む）
  */
 kioskRoutes.post("/walkin/:id", async (c) => {
   const id = c.req.param("id");
@@ -295,7 +296,7 @@ kioskRoutes.post("/walkin/:id", async (c) => {
       .bind(id),
   );
   const pending = !after || after.guest_total === 0 || after.approved < after.guest_total;
-  return c.json({ token, pending });
+  return c.json({ token, pending, approvedNow: approving });
 });
 
 kioskRoutes.get("/checkout", async (c) => {
