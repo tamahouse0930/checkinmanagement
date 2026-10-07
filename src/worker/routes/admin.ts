@@ -6,6 +6,7 @@ import { getSettings, invalidateSettings, PROPERTY_ID } from "../lib/settings";
 import { nowIso } from "../lib/time";
 import { requireFacility } from "../middleware/admin";
 import { sendMail } from "../services/google/gmail";
+import { googleLinkViews } from "../services/google/token";
 import { loadSetupStatus } from "../services/setup";
 import { forgetDevice } from "./kiosk";
 import { adminGuestRoutes } from "./admin-guests";
@@ -64,7 +65,8 @@ adminRoutes.get("/setup", async (c) => {
 });
 
 adminRoutes.get("/settings", async (c) => {
-  const { property, googleLink } = await getSettings(c.var.db);
+  const settings = await getSettings(c.var.db);
+  const { property } = settings;
   return c.json({
     property: {
       name: property.name,
@@ -74,11 +76,7 @@ adminRoutes.get("/settings", async (c) => {
       operatorContact: property.operator_contact,
     },
     google: {
-      serviceEmail: c.env.GOOGLE_SERVICE_EMAIL,
-      linked: googleLink !== null,
-      accountEmail: googleLink?.account_email ?? null,
-      linkedAt: googleLink?.linked_at ?? null,
-      lastError: googleLink?.last_error ?? null,
+      links: googleLinkViews(settings, c.env),
       driveFolderReady: property.drive_root_folder_id !== null,
     },
   });

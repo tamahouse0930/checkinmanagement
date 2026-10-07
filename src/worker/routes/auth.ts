@@ -6,7 +6,7 @@ import { auditStatement } from "../lib/audit";
 import { base64UrlDecode, base64UrlEncode, encryptText, randomToken, signValue, utf8Decode, utf8Encode, verifySignedValue } from "../lib/crypto";
 import { revokeSessionsStatement } from "../lib/revoke";
 import { decodeSession, encodeSession, newSessionPayload, SESSION_COOKIE } from "../lib/session";
-import { type AdminRoles, getSettings, invalidateSettings } from "../lib/settings";
+import { type AdminRoles, getSettings, invalidateSettings, PROPERTY_ID } from "../lib/settings";
 import { nowIso } from "../lib/time";
 import { readAdminSession, setSessionCookie } from "../middleware/admin";
 import { ensureRootFolder } from "../services/google/drive";
@@ -14,8 +14,10 @@ import {
   buildAuthUrl,
   createPkce,
   exchangeCode,
-  LINK_SCOPES,
+  type GooglePurpose,
+  linkScopes,
   LOGIN_SCOPES,
+  PURPOSE_SCOPE,
   verifyIdTokenClaims,
 } from "../services/google/oauth";
 import { clearGoogleAccessToken } from "../services/google/token";
@@ -25,6 +27,8 @@ type Mode = "login" | "link";
 
 interface OAuthState {
   mode: Mode;
+  /** 連携の用途（mode が link のとき） */
+  purpose?: GooglePurpose;
   state: string;
   nonce: string;
   verifier: string;
@@ -34,14 +38,26 @@ interface OAuthState {
 
 const STATE_COOKIE = "th_oauth";
 
+/** 用途ごとに連携できるアカウント（wrangler.jsonc の vars） */
+function expectedEmail(c: Context<AppEnv>, purpose: GooglePurpose): string {
+  return (purpose === "mail" ? c.env.GOOGLE_SERVICE_EMAIL : c.env.GOOGLE_DRIVE_EMAIL).toLowerCase();
+}
+
 function redirectUri(c: Context<AppEnv>): string {
   return `${new URL(c.req.url).origin}/auth/google/callback`;
 }
 
-async function startFlow(c: Context<AppEnv>, mode: Mode): Promise<Response> {
+async function startFlow(c: Context<AppEnv>, mode: Mode, purpose?: GooglePurpose): Promise<Response> {
   const pkce = await createPkce();
   const next = mode === "login" ? safeAdminPath(c.req.query("next")) : null;
-  const flow: OAuthState = { mode, state: randomToken(), nonce: randomToken(), verifier: pkce.verifier, ...(next ? { next } : {}) };
+  const flow: OAuthState = {
+    mode,
+    state: randomToken(),
+    nonce: randomToken(),
+    verifier: pkce.verifier,
+    ...(next ? { next } : {}),
+    ...(purpose ? { purpose } : {}),
+  };
   const signed = await signValue(c.env.SESSION_SECRET, base64UrlEncode(utf8Encode(JSON.stringify(flow))));
   // Google から戻ってくるときはサイトをまたぐ移動になるため SameSite=Lax にする
   setCookie(c, STATE_COOKIE, signed, { httpOnly: true, secure: true, sameSite: "Lax", path: "/auth", maxAge: 600 });
@@ -50,12 +66,12 @@ async function startFlow(c: Context<AppEnv>, mode: Mode): Promise<Response> {
     buildAuthUrl({
       clientId: c.env.GOOGLE_CLIENT_ID,
       redirectUri: redirectUri(c),
-      scope: mode === "login" ? LOGIN_SCOPES : LINK_SCOPES,
+      scope: purpose ? linkScopes(purpose) : LOGIN_SCOPES,
       state: flow.state,
       nonce: flow.nonce,
       codeChallenge: pkce.challenge,
       offline: mode === "link",
-      loginHint: mode === "link" ? c.env.GOOGLE_SERVICE_EMAIL : undefined,
+      loginHint: purpose ? expectedEmail(c, purpose) : undefined,
     }),
   );
 }
@@ -88,10 +104,15 @@ export const authRoutes = new Hono<AppEnv>();
 /** 管理画面のログイン（各自の Google アカウント。設計書 7.1） */
 authRoutes.get("/login", (c) => startFlow(c, "login"));
 
-/** Google ドライブ・Gmail との連携（tamahouse0930@gmail.com で 1 回だけ許可する） */
+/**
+ * Google との連携。?purpose=mail は通知メールの送信（GOOGLE_SERVICE_EMAIL）、?purpose=drive は写真の保存（GOOGLE_DRIVE_EMAIL）。
+ * それぞれ決めたアカウントで 1 回だけ許可する
+ */
 authRoutes.get("/link", async (c) => {
   if (!(await readAdminSession(c, "facility"))) return adminRedirect(c, "/admin", "ログインしてください");
-  return startFlow(c, "link");
+  const purpose = c.req.query("purpose");
+  if (purpose !== "mail" && purpose !== "drive") return adminRedirect(c, "/admin/setup", "連携の種類が正しくありません");
+  return startFlow(c, "link", purpose);
 });
 
 authRoutes.get("/callback", async (c) => {
@@ -163,38 +184,55 @@ authRoutes.get("/callback", async (c) => {
     return c.redirect(landingPath(roles, flow.next));
   }
 
-  // 連携: ログイン中の管理者が、tamahouse0930@gmail.com で許可した場合だけ受け付ける
+  // 連携: ログイン中の管理者が、用途ごとに決めたアカウントで許可した場合だけ受け付ける
   const admin = await readAdminSession(c, "facility");
   if (!admin) return adminRedirect(c, "/admin", "ログインしてください");
-  if (claims.email !== c.env.GOOGLE_SERVICE_EMAIL.toLowerCase()) {
-    return adminRedirect(c, back, `${c.env.GOOGLE_SERVICE_EMAIL} で許可してください（${claims.email} で許可されました）`);
+  const purpose = flow.purpose;
+  if (purpose !== "mail" && purpose !== "drive") return adminRedirect(c, back, "連携の種類が正しくありません");
+  const label = purpose === "mail" ? "通知メールの送信" : "写真の保存";
+  const expected = expectedEmail(c, purpose);
+  if (claims.email !== expected) {
+    return adminRedirect(c, back, `${label}は ${expected} で許可してください（${claims.email} で許可されました）`);
   }
   if (!tokens.refresh_token) {
     return adminRedirect(c, back, "Google からリフレッシュトークンを受け取れませんでした。もう一度お試しください");
   }
-  const scopes = tokens.scope.split(" ");
-  if (!LINK_SCOPES.split(" ").filter((s) => s.startsWith("https://")).every((s) => scopes.includes(s))) {
-    return adminRedirect(c, back, "メールの送信とドライブへの保存の両方を許可してください");
+  if (!tokens.scope.split(" ").includes(PURPOSE_SCOPE[purpose])) {
+    return adminRedirect(c, back, purpose === "mail" ? "メールの送信を許可してください" : "Google ドライブへの保存を許可してください");
   }
 
+  // 写真の保存先を別のアカウントに変えたときは、保存先のフォルダを新しいアカウントで作り直す
+  // （このアプリの権限では、前のアカウントのドライブにあるフォルダ・写真には触れられないため。前の写真は前のアカウントのドライブに残る）
+  const before = (await getSettings(db)).googleLinks[purpose];
+  const driveChanged = purpose === "drive" && before !== null && before.account_email.toLowerCase() !== claims.email;
   await db.batch([
     db
       .prepare(
-        `INSERT INTO google_link (id, account_email, scopes, refresh_token_enc, linked_at, last_error)
-         VALUES (1, ?, ?, ?, ?, NULL)
-         ON CONFLICT (id) DO UPDATE SET account_email = excluded.account_email, scopes = excluded.scopes,
+        `INSERT INTO google_links (purpose, account_email, scopes, refresh_token_enc, linked_at, last_error)
+         VALUES (?, ?, ?, ?, ?, NULL)
+         ON CONFLICT (purpose) DO UPDATE SET account_email = excluded.account_email, scopes = excluded.scopes,
            refresh_token_enc = excluded.refresh_token_enc, linked_at = excluded.linked_at, last_error = NULL`,
       )
-      .bind(claims.email, tokens.scope, await encryptText(c.env.TOKEN_ENC_KEY, tokens.refresh_token), nowIso()),
-    auditStatement(db, `admin:${admin.email}`, "google_link", claims.email),
+      .bind(purpose, claims.email, tokens.scope, await encryptText(c.env.TOKEN_ENC_KEY, tokens.refresh_token), nowIso()),
+    ...(driveChanged
+      ? [
+          db
+            .prepare("UPDATE properties SET drive_root_folder_id = NULL, missing_photo_count = 0, settings_version = settings_version + 1, updated_at = ? WHERE id = ?")
+            .bind(nowIso(), PROPERTY_ID),
+          db.prepare("UPDATE reservations SET drive_folder_id = NULL WHERE drive_folder_id IS NOT NULL"),
+        ]
+      : []),
+    auditStatement(db, `admin:${admin.email}`, "google_link", `${label}: ${claims.email}`),
   ]);
   invalidateSettings();
-  clearGoogleAccessToken();
+  clearGoogleAccessToken(purpose);
 
-  try {
-    await ensureRootFolder(c.env, db);
-  } catch (error) {
-    return adminRedirect(c, back, `連携はできましたが、ドライブにフォルダを作れませんでした: ${String(error)}`);
+  if (purpose === "drive") {
+    try {
+      await ensureRootFolder(c.env, db);
+    } catch (error) {
+      return adminRedirect(c, back, `連携はできましたが、ドライブにフォルダを作れませんでした: ${String(error)}`);
+    }
   }
-  return c.redirect(`${back}?linked=1`);
+  return c.redirect(`${back}?linked=${purpose}`);
 });

@@ -40,7 +40,7 @@ export function buildRawMessage(from: string, message: MailMessage): string {
 /** 管理用の Gmail（tamahouse0930@gmail.com）からメールを送る。1 通の宛先に全員を並べる */
 export async function sendMail(env: Env, db: Db, message: MailMessage): Promise<void> {
   if (message.to.length === 0) return;
-  const token = await getGoogleAccessToken(env, db);
+  const token = await getGoogleAccessToken(env, db, "mail");
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -48,7 +48,7 @@ export async function sendMail(env: Env, db: Db, message: MailMessage): Promise<
   });
   if (!res.ok) {
     const error = `通知メールの送信に失敗しました（HTTP ${res.status}）`;
-    await recordGoogleError(db, error);
+    await recordGoogleError(db, "mail", error);
     throw new Error(error);
   }
 }

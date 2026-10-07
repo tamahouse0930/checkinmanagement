@@ -6,6 +6,7 @@ import { auditStatement } from "../lib/audit";
 import { SESSION_COOKIE } from "../lib/session";
 import { revokeSessionsStatement } from "../lib/revoke";
 import { getSettings, invalidateSettings } from "../lib/settings";
+import { googleLinkViews } from "../services/google/token";
 import { nowIso } from "../lib/time";
 import { requireLogin } from "../middleware/admin";
 
@@ -76,15 +77,11 @@ accountRoutes.get("/status", async (c) => {
     db.prepare("SELECT channel, last_synced_at, last_error FROM ical_sources ORDER BY channel LIMIT 10"),
     db.prepare("SELECT name, last_seen_at FROM devices WHERE revoked_at IS NULL ORDER BY created_at LIMIT 20"),
   ]);
-  const { googleLink, property } = await getSettings(db);
+  const settings = await getSettings(db);
+  const { property } = settings;
   const body: SystemStatus = {
     jobs: jobs.results as SystemStatus["jobs"],
-    google: {
-      linked: googleLink !== null,
-      accountEmail: googleLink?.account_email ?? null,
-      linkedAt: googleLink?.linked_at ?? null,
-      lastError: googleLink?.last_error ?? null,
-    },
+    google: googleLinkViews(settings, c.env),
     icalSources: sources.results as SystemStatus["icalSources"],
     devices: devices.results as SystemStatus["devices"],
     missingPhotoCount: property.missing_photo_count,

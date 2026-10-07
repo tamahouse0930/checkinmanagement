@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { GOOGLE_PURPOSE_LABEL, type GoogleLinkView } from "../../shared/api-types";
 import { LANG_NAME, LANGS, type Lang } from "../../shared/langs";
 import { TEXT_KIND_LABEL, TEXT_KINDS, TEXT_PLACEHOLDERS, textMaxLength, type TextKind } from "../../shared/templates";
 import { api } from "../lib/api";
@@ -16,11 +17,8 @@ export interface SettingsResponse {
     operatorContact: string;
   };
   google: {
-    serviceEmail: string;
-    linked: boolean;
-    accountEmail: string | null;
-    linkedAt: string | null;
-    lastError: string | null;
+    /** 通知メールの送信用、写真の保存用の順 */
+    links: GoogleLinkView[];
     driveFolderReady: boolean;
   };
 }
@@ -73,42 +71,60 @@ export function BasicSection({ initial, onSaved }: { initial: SettingsResponse["
   );
 }
 
+/**
+ * Google との連携（設計書 4.14）。通知メールの送信と写真の保存は、それぞれ決めたアカウントで別々に許可する
+ * （同じアカウントでもよい）。アカウントは wrangler.jsonc の vars で決める
+ */
 export function GoogleSection({ google }: { google: SettingsResponse["google"] }) {
   const { message, run } = useMessage();
   const params = new URLSearchParams(location.search);
-  const linkedNow = params.get("linked") === "1";
+  const linkedNow = params.get("linked");
   const error = params.get("error");
 
   return (
     <section className="card">
-      <h2>Google ドライブ・Gmail との連携</h2>
+      <h2>Google との連携（通知メール・写真の保存）</h2>
       <p className="note">
-        写真の保存と通知メールの送信に <strong>{google.serviceEmail}</strong> を使います。代表の管理者が、自分のスマホで
-        {google.serviceEmail} にログインして許可してください。
+        通知メールの送信と写真の保存（Google ドライブ）に使う Google アカウントを、それぞれ連携します。代表の管理者が、自分のスマホで
+        そのアカウントにログインして許可してください。
       </p>
-      {linkedNow && <p className="notice">連携しました。</p>}
+      {(linkedNow === "mail" || linkedNow === "drive") && <p className="notice">{GOOGLE_PURPOSE_LABEL[linkedNow]}の連携をしました。</p>}
       {error && <p className="alert">{error}</p>}
-      <dl className="status">
-        <dt>状態</dt>
-        <dd>{google.linked ? (google.lastError ? "エラー" : "連携済み") : "未連携"}</dd>
-        <dt>アカウント</dt>
-        <dd>{google.accountEmail ?? "—"}</dd>
-        <dt>連携した日時</dt>
-        <dd>{formatDate(google.linkedAt)}</dd>
-        <dt>写真の保存先フォルダ</dt>
-        <dd>{google.driveFolderReady ? "作成済み" : "未作成"}</dd>
-      </dl>
-      {google.lastError && <p className="alert">{google.lastError}</p>}
-      <div className="actions">
-        <a className="button primary" href="/auth/google/link">
-          {google.linked ? "Google と連携し直す" : "Google と連携"}
-        </a>
-        {google.linked && (
-          <button className="button" onClick={() => run(() => api("/api/admin/google/test-mail", { method: "POST" }), "テストメールを送りました")}>
-            テストメールを送る
-          </button>
-        )}
-      </div>
+      {google.links.map((g) => (
+        <div key={g.purpose} className="google-link">
+          <h3 className="sub-heading">{GOOGLE_PURPOSE_LABEL[g.purpose]}</h3>
+          <dl className="status">
+            <dt>使うアカウント</dt>
+            <dd>{g.expectedEmail}</dd>
+            <dt>状態</dt>
+            <dd>{g.linked ? (g.lastError ? "エラー" : "連携済み") : "未連携"}</dd>
+            <dt>連携したアカウント</dt>
+            <dd>{g.accountEmail ?? "—"}</dd>
+            <dt>連携した日時</dt>
+            <dd>{formatDate(g.linkedAt)}</dd>
+            {g.purpose === "drive" && (
+              <>
+                <dt>写真の保存先フォルダ</dt>
+                <dd>{google.driveFolderReady ? "作成済み" : "未作成"}</dd>
+              </>
+            )}
+          </dl>
+          {g.linked && g.accountEmail?.toLowerCase() !== g.expectedEmail.toLowerCase() && (
+            <p className="alert">連携しているアカウントが、使うアカウント（{g.expectedEmail}）と違います。連携し直してください。</p>
+          )}
+          {g.lastError && <p className="alert">{g.lastError}</p>}
+          <div className="actions">
+            <a className="button primary" href={`/auth/google/link?purpose=${g.purpose}`}>
+              {g.linked ? "連携し直す" : "連携する"}
+            </a>
+            {g.purpose === "mail" && g.linked && (
+              <button className="button" onClick={() => run(() => api("/api/admin/google/test-mail", { method: "POST" }), "テストメールを送りました")}>
+                テストメールを送る
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
       <Message message={message} />
     </section>
   );

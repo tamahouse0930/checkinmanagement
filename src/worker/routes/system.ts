@@ -81,8 +81,8 @@ systemRoutes.post("/accounts/:email/invite", async (c) => {
   if (!settings.accounts.get(email)?.facility) {
     return c.json({ error: { code: "not_found", message: "アカウントが見つかりません" } }, 404);
   }
-  if (!settings.googleLink) {
-    return c.json(badRequest("施設が Google と連携してから送ってください（メールは連携したアカウントから送ります）"), 400);
+  if (!settings.googleLinks.mail) {
+    return c.json(badRequest("施設が通知メールの送信用の Google アカウントと連携してから送ってください（メールはそのアカウントから送ります）"), 400);
   }
 
   const { pending } = status;

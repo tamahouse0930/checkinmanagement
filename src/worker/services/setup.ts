@@ -10,7 +10,7 @@ export function setupStatus(settings: Settings, icalCount: number): SetupStatus 
   const steps = {
     basic: property.name.trim() !== "" && property.operator_name.trim() !== "" && property.operator_contact.trim() !== "",
     recipients: settings.recipients.length > 0,
-    google: settings.googleLink !== null,
+    google: settings.googleLinks.mail !== null && settings.googleLinks.drive !== null,
     ical: icalCount > 0,
   };
   const pending = (["basic", "recipients", "google", "ical"] as const).filter((k) => !steps[k]);

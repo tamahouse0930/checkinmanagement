@@ -1,5 +1,6 @@
 import type { Lang } from "../../shared/langs";
 import { DEFAULT_TEXTS, type TextKind } from "../../shared/templates";
+import type { GooglePurpose } from "../services/google/oauth";
 import type { Db } from "./db";
 
 export interface PropertyRow {
@@ -44,7 +45,8 @@ export interface Settings {
   accounts: Map<string, AdminRoles>;
   recipients: string[];
   revokedSids: Set<string>;
-  googleLink: GoogleLinkRow | null;
+  /** Google との連携（通知メールの送信用と写真の保存用。別のアカウントにできる） */
+  googleLinks: Record<GooglePurpose, GoogleLinkRow | null>;
   /** 管理者が編集した文面。キーは `種類:言語` */
   texts: Map<string, string>;
 }
@@ -76,9 +78,7 @@ export async function getSettings(db: Db): Promise<Settings> {
     db.prepare("SELECT * FROM properties WHERE id = ?").bind(PROPERTY_ID),
     db.prepare("SELECT email, is_system, is_facility FROM admin_accounts LIMIT 50"),
     db.prepare("SELECT email FROM notify_recipients LIMIT 50"),
-    db.prepare(
-      "SELECT account_email, scopes, refresh_token_enc, linked_at, last_error FROM google_link WHERE id = 1",
-    ),
+    db.prepare("SELECT purpose, account_email, scopes, refresh_token_enc, linked_at, last_error FROM google_links LIMIT 2"),
     db.prepare("SELECT kind, lang, body FROM property_texts WHERE property_id = ? LIMIT 100").bind(PROPERTY_ID),
   ]);
 
@@ -94,7 +94,10 @@ export async function getSettings(db: Db): Promise<Settings> {
     ),
     recipients: (recipients.results as { email: string }[]).map((r) => r.email),
     revokedSids: new Set(parseRevoked(propertyRow.revoked_sessions).map((r) => r.sid)),
-    googleLink: (link.results[0] as GoogleLinkRow | undefined) ?? null,
+    googleLinks: {
+      mail: (link.results as (GoogleLinkRow & { purpose: string })[]).find((r) => r.purpose === "mail") ?? null,
+      drive: (link.results as (GoogleLinkRow & { purpose: string })[]).find((r) => r.purpose === "drive") ?? null,
+    },
     texts: new Map(
       (texts.results as { kind: string; lang: string; body: string }[]).map((r) => [`${r.kind}:${r.lang}`, r.body]),
     ),

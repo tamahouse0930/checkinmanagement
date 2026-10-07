@@ -205,8 +205,8 @@ export function planReconcile(
  * ドライブの一覧を最後まで取れなかったときは、新しく「見つからない」印は付けない（一覧にないだけで、消えたとは限らないため）
  */
 export async function reconcilePhotos(env: Env, db: Db): Promise<void> {
-  const { googleLink } = await getSettings(db);
-  if (!googleLink) return;
+  const { googleLinks } = await getSettings(db);
+  if (!googleLinks.drive) return;
   const drive = await listAppFileIds(env, db);
   const photos = await db.all<{ id: string; drive_file_id: string; missing_at: string | null }>(
     db.prepare("SELECT id, drive_file_id, missing_at FROM photos LIMIT 10000"),

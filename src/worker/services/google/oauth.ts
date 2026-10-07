@@ -5,13 +5,17 @@ export const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 
 /** 管理画面のログインに求める権限 */
 export const LOGIN_SCOPES = "openid email";
-/** 写真の保存とメールの送信に求める権限（このアプリが作ったファイルとメールの送信だけ） */
-export const LINK_SCOPES = [
-  "openid",
-  "email",
-  "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/drive.file",
-].join(" ");
+/** Google との連携の用途。通知メールの送信と写真の保存で、別のアカウントにできる */
+export type GooglePurpose = "mail" | "drive";
+export const GOOGLE_PURPOSES: GooglePurpose[] = ["mail", "drive"];
+/** 用途ごとに求める権限（メールの送信だけ／このアプリが作ったファイルだけ） */
+export const PURPOSE_SCOPE: Record<GooglePurpose, string> = {
+  mail: "https://www.googleapis.com/auth/gmail.send",
+  drive: "https://www.googleapis.com/auth/drive.file",
+};
+export function linkScopes(purpose: GooglePurpose): string {
+  return ["openid", "email", PURPOSE_SCOPE[purpose]].join(" ");
+}
 
 export interface Pkce {
   verifier: string;

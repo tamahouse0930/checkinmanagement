@@ -4,8 +4,10 @@ import type { ReservationRow } from "./services/guests";
 
 export interface Env {
   DB: D1Database;
-  /** 写真の保存とメールの送信に使う Google アカウント（wrangler.jsonc の vars） */
+  /** 通知メールの送信に使う Google アカウント（wrangler.jsonc の vars） */
   GOOGLE_SERVICE_EMAIL: string;
+  /** 写真の保存（Google ドライブ）に使う Google アカウント（wrangler.jsonc の vars） */
+  GOOGLE_DRIVE_EMAIL: string;
   /** 定期処理の通知メールに載せる管理画面の URL の起点（wrangler.jsonc の vars） */
   PUBLIC_ORIGIN?: string;
   /** 以下はシークレット（.dev.vars / wrangler secret put） */

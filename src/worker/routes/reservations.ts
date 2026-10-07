@@ -165,7 +165,7 @@ reservationRoutes.get("/calendar", async (c) => {
   ]);
 
   const settings = await getSettings(db);
-  const { googleLink, property } = settings;
+  const { googleLinks, property } = settings;
   const now = jstNow();
   const nowTime = `${String(now.hour).padStart(2, "0")}:${String(now.minute).padStart(2, "0")}`;
   const attention = Object.fromEntries(ATTENTION_KEYS.map((k) => [k, 0])) as Record<AttentionKey, number>;
@@ -178,7 +178,7 @@ reservationRoutes.get("/calendar", async (c) => {
     if (s.last_error) alerts.push(`${s.channel === "airbnb" ? "Airbnb" : "Booking.com"} の取り込み: ${s.last_error}`);
   }
   // 連携していないことは、初期設定の案内（setupPending）で知らせる
-  if (googleLink?.last_error) alerts.push(googleLink.last_error);
+  for (const link of [googleLinks.mail, googleLinks.drive]) if (link?.last_error) alerts.push(link.last_error);
   if (property.missing_photo_count > 0) {
     alerts.push(`Google ドライブで見つからない写真が ${property.missing_photo_count} 件あります（名簿管理で確認してください）`);
   }

@@ -31,11 +31,27 @@ export interface CalendarResponse {
 /** 初期設定の項目（設計書 4.14） */
 export type SetupStepKey = "basic" | "recipients" | "google" | "ical";
 
+/** Google との連携の状態（用途ごと。通知メールの送信用と写真の保存用） */
+export interface GoogleLinkView {
+  purpose: "mail" | "drive";
+  /** 連携できるアカウント（wrangler.jsonc の vars で決める） */
+  expectedEmail: string;
+  linked: boolean;
+  accountEmail: string | null;
+  linkedAt: string | null;
+  lastError: string | null;
+}
+
+export const GOOGLE_PURPOSE_LABEL: Record<GoogleLinkView["purpose"], string> = {
+  mail: "通知メールの送信",
+  drive: "写真の保存（Google ドライブ）",
+};
+
 /** システムの状態（設計書 4.15）。システム管理者・施設管理者の両方に表示する。宿泊者の個人情報は含めない */
 export interface SystemStatus {
   /** 毎日の定期処理と、最後に実行した日（日本時間の日付） */
   jobs: { job: string; last_run: string }[];
-  google: { linked: boolean; accountEmail: string | null; linkedAt: string | null; lastError: string | null };
+  google: GoogleLinkView[];
   icalSources: { channel: "airbnb" | "booking"; last_synced_at: string | null; last_error: string | null }[];
   devices: { name: string; last_seen_at: string | null }[];
   missingPhotoCount: number;

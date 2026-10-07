@@ -1,5 +1,5 @@
-import { type ReactNode, useEffect, useState } from "react";
-import type { SystemStatus } from "../../shared/api-types";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
+import { GOOGLE_PURPOSE_LABEL, type SystemStatus } from "../../shared/api-types";
 import { jstNow } from "../../shared/dates";
 import { api } from "../lib/api";
 import { confirmDialog } from "../lib/dialog";
@@ -114,16 +114,18 @@ export function SystemStatusSection() {
 
           <h3 className="sub-heading">Google との連携</h3>
           <ul className="list">
-            <li>
-              <span>
-                {status.google.accountEmail ?? "未連携"}
-                {status.google.linkedAt && <small>（連携 {formatDate(status.google.linkedAt)}）</small>}
-              </span>
-              <Ok ok={status.google.linked && !status.google.lastError}>
-                {!status.google.linked ? "未連携" : status.google.lastError ? "エラー" : "正常"}
-              </Ok>
-            </li>
-            {status.google.lastError && <li className="alert">{status.google.lastError}</li>}
+            {status.google.map((g) => (
+              <Fragment key={g.purpose}>
+                <li>
+                  <span>
+                    {GOOGLE_PURPOSE_LABEL[g.purpose]}: {g.accountEmail ?? "未連携"}
+                    {g.linkedAt && <small>（連携 {formatDate(g.linkedAt)}）</small>}
+                  </span>
+                  <Ok ok={g.linked && !g.lastError}>{!g.linked ? "未連携" : g.lastError ? "エラー" : "正常"}</Ok>
+                </li>
+                {g.lastError && <li className="alert">{g.lastError}</li>}
+              </Fragment>
+            ))}
             <li>
               <span>Google ドライブで見つからない写真</span>
               <Ok ok={status.missingPhotoCount === 0}>{status.missingPhotoCount} 件</Ok>

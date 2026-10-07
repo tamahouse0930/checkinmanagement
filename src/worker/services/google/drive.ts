@@ -43,7 +43,7 @@ export async function ensureRootFolder(env: Env, db: Db): Promise<string> {
   const { property } = await getSettings(db);
   if (property.drive_root_folder_id) return property.drive_root_folder_id;
 
-  const token = await getGoogleAccessToken(env, db);
+  const token = await getGoogleAccessToken(env, db, "drive");
   const folderId = await createFolder(token, rootFolderName(property.name));
   await db.run(
     db
@@ -71,7 +71,7 @@ const CHANNEL_NAME: Record<string, string> = { airbnb: "Airbnb", booking: "Booki
 export async function ensureReservationFolder(env: Env, db: Db, r: FolderTarget): Promise<string> {
   if (r.drive_folder_id) return r.drive_folder_id;
   const root = await ensureRootFolder(env, db);
-  const token = await getGoogleAccessToken(env, db);
+  const token = await getGoogleAccessToken(env, db, "drive");
   const parent = await findOrCreateFolder(token, r.is_test ? "_test" : r.check_in_date.slice(0, 4), root);
   const name = `${r.check_in_date}_${CHANNEL_NAME[r.channel] ?? r.channel}_${r.reservation_code ?? r.id.slice(0, 5)}`;
   const folderId = await createFolder(token, name, parent);
@@ -87,7 +87,7 @@ export async function uploadFile(
   bytes: Uint8Array,
   mimeType: string,
 ): Promise<{ id: string; size: number }> {
-  const token = await getGoogleAccessToken(env, db);
+  const token = await getGoogleAccessToken(env, db, "drive");
   const boundary = `th${crypto.randomUUID().replace(/-/g, "")}`;
   const head = new TextEncoder().encode(
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
@@ -110,7 +110,7 @@ export async function uploadFile(
 }
 
 export async function renameFile(env: Env, db: Db, fileId: string, name: string): Promise<void> {
-  const token = await getGoogleAccessToken(env, db);
+  const token = await getGoogleAccessToken(env, db, "drive");
   await driveFetch(token, `${DRIVE_FILES}/${fileId}?fields=id`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -120,7 +120,7 @@ export async function renameFile(env: Env, db: Db, fileId: string, name: string)
 
 /** ファイルを削除する（すでにない場合は何もしない） */
 export async function deleteFile(env: Env, db: Db, fileId: string): Promise<void> {
-  const token = await getGoogleAccessToken(env, db);
+  const token = await getGoogleAccessToken(env, db, "drive");
   await driveFetch(token, `${DRIVE_FILES}/${fileId}`, { method: "DELETE" });
 }
 
@@ -129,7 +129,7 @@ export async function deleteFile(env: Env, db: Db, fileId: string): Promise<void
  * 管理者が自分で置いた他のファイルは含まれない。1 回で最大 1,000 件、最大 5 回まで取得する
  */
 export async function listAppFileIds(env: Env, db: Db): Promise<{ ids: Set<string>; complete: boolean }> {
-  const token = await getGoogleAccessToken(env, db);
+  const token = await getGoogleAccessToken(env, db, "drive");
   const ids = new Set<string>();
   let pageToken: string | undefined;
   for (let page = 0; page < 5; page++) {
@@ -156,7 +156,7 @@ export async function listAppFileIds(env: Env, db: Db): Promise<{ ids: Set<strin
  * 画像が見つからなければ null
  */
 export async function ocrImage(env: Env, db: Db, fileId: string): Promise<string | null> {
-  const token = await getGoogleAccessToken(env, db);
+  const token = await getGoogleAccessToken(env, db, "drive");
   const copy = await driveFetch(token, `${DRIVE_FILES}/${fileId}/copy?ocrLanguage=en&fields=id`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -175,7 +175,7 @@ export async function ocrImage(env: Env, db: Db, fileId: string): Promise<string
 
 /** ファイルの中身を取得する。見つからなければ null */
 export async function downloadFile(env: Env, db: Db, fileId: string): Promise<Response | null> {
-  const token = await getGoogleAccessToken(env, db);
+  const token = await getGoogleAccessToken(env, db, "drive");
   const res = await driveFetch(token, `${DRIVE_FILES}/${fileId}?alt=media`);
   return res.status === 404 ? null : res;
 }

@@ -360,11 +360,11 @@ CREATE INDEX idx_photos_reservation ON photos (reservation_id);
 CREATE INDEX idx_photos_taken ON photos (taken_at);
 CREATE INDEX idx_photos_delete ON photos (delete_after);   -- 削除待ちの写真を索引だけで探す（11 章 DB-09）
 
--- Google アカウントの連携（1 行だけ）
-CREATE TABLE google_link (
-  id              INTEGER PRIMARY KEY CHECK (id = 1),
-  account_email   TEXT NOT NULL,          -- 連携した Google アカウント（tamahouse0930@gmail.com）
-  scopes          TEXT NOT NULL,          -- gmail.send drive.file
+-- Google アカウントの連携（用途ごとに 1 行。通知メールの送信と写真の保存で別のアカウントにできる）
+CREATE TABLE google_links (
+  purpose         TEXT PRIMARY KEY CHECK (purpose IN ('mail', 'drive')),
+  account_email   TEXT NOT NULL,          -- 連携した Google アカウント（mail: tamahouse0930@gmail.com、drive: s.tamaki@tmkjp.com）
+  scopes          TEXT NOT NULL,          -- mail: gmail.send、drive: drive.file
   refresh_token_enc TEXT NOT NULL,        -- 暗号化したリフレッシュトークン（AES-GCM。7.1）
   linked_at       TEXT NOT NULL,
   last_error      TEXT                    -- 直近のエラー（トークンの失効など）
@@ -775,10 +775,10 @@ flowchart TD
 - 送信元は管理者の Gmail アカウント（1 つ）、宛先は `notify_recipients` に登録したすべてのアドレス
 - 1 通のメールの宛先に全員を並べて送る
 - 本文は通知の内容と予約詳細へのリンクだけとし、宿泊者の氏名以外の個人情報は書かない
-- 仕組み: `google_link` の暗号化したリフレッシュトークンで Google のアクセストークンを取得し、Gmail API の `users.messages.send` を呼ぶ。アクセストークン（1 時間有効）は Worker の中で覚えておき、使い回す。Google ドライブへの保存（3.4）も同じトークンを使う
+- 仕組み: `google_links` の通知メール用（`mail`）の暗号化したリフレッシュトークンで Google のアクセストークンを取得し、Gmail API の `users.messages.send` を呼ぶ。アクセストークン（1 時間有効）は用途ごとに Worker の中で覚えておき、使い回す。Google ドライブへの保存（3.4）は写真の保存用（`drive`）のトークンを使う
 - 初期設定（1 回だけ）:
   1. 開発者が `tamahouse0930@gmail.com` で Google Cloud の無料のプロジェクトを作り、Gmail API と Google Drive API を有効にし、OAuth クライアント（ログインと連携の両方に使う）を作る（クレジットカードの登録は不要）
-  2. 管理者が管理画面の設定で「Google と連携」を押し、`tamahouse0930@gmail.com` で許可する（7.1）
+  2. 管理者が管理画面の設定で、通知メールの送信は `tamahouse0930@gmail.com`、写真の保存は `s.tamaki@tmkjp.com` でそれぞれ「連携する」を押して許可する（7.1）。アカウントは `wrangler.jsonc` の `GOOGLE_SERVICE_EMAIL`（メール）と `GOOGLE_DRIVE_EMAIL`（写真）で決め、違うアカウントで許可されたら受け付けない。OAuth の同意画面が「テスト」のときは、両方のアカウントをテストユーザーに入れる
 - 注意: OAuth の同意画面が「テスト」状態のままだとリフレッシュトークンが 7 日で失効するため、「本番」状態にしておく（自分だけが使うアプリなので、Google の審査は受けずに「未確認のアプリ」の警告を承知のうえで許可する）。メールの送信やドライブへの保存に失敗したら、`google_link.last_error` に記録し、管理画面の「要対応」に表示する。写真の保存に失敗した場合、ゲストの画面には「もう一度お試しください」と表示する
 
 ### 4.11 定期処理
@@ -844,7 +844,7 @@ Workers の無料プランでは、1 回の処理で外部へのリクエスト�
 |---|---|---|
 | 1 | 施設の基本情報 | 施設名・事業者名・問い合わせ先が入っている |
 | 2 | 通知メールの宛先 | 1 件以上ある |
-| 3 | Google との連携 | `google_link` がある（連携後は初期設定の画面に戻る） |
+| 3 | Google との連携 | `google_links` に通知メール用と写真の保存用の両方がある（連携後は初期設定の画面に戻る） |
 | 4 | 予約の取り込み（iCal） | 取得元が 1 件以上ある |
 
 - 判定は `GET /api/admin/setup` が返す。設定のキャッシュに加えて、iCal の取得元の数を数える。タブレットは初期設定の時点で用意できているとは限らないため、初期設定には含めず設定画面に置く
@@ -922,7 +922,7 @@ Workers の無料プランでは、1 回の処理で外部へのリクエスト�
 |---|---|---|
 | GET | `/auth/google/login` | Google ログインを開始する（Google の画面へ移る） |
 | GET | `/auth/google/callback` | Google からの戻り先。アカウントを確認し、セッション Cookie を発行する |
-| GET | `/auth/google/link` | Google ドライブ・Gmail の連携を開始する（`tamahouse0930@gmail.com` で許可） |
+| GET | `/auth/google/link?purpose=mail|drive` | 通知メールの送信（`tamahouse0930@gmail.com`）または写真の保存（`s.tamaki@tmkjp.com`）の連携を開始する。写真の保存を別のアカウントで連携し直すと、保存先のフォルダ（`properties.drive_root_folder_id`、`reservations.drive_folder_id`）を空にして新しいアカウントで作り直す |
 | GET | `/api/account/me` | ログイン中の管理者と権限（両方の権限で使える。以下 `/api/account` は同じ） |
 | POST | `/api/account/logout` | ログアウト |
 | GET / DELETE | `/api/account/sessions` | ログイン中の端末の一覧と、個別のログアウト |
@@ -990,7 +990,7 @@ Workers の無料プランでは、1 回の処理で外部へのリクエスト�
 
 **Google ドライブと Gmail の連携（ログインとは別）**
 
-写真の保存とメールの送信には、`tamahouse0930@gmail.com` の「メールの送信」と「このアプリが作ったファイルの管理」の権限が必要になる。管理画面の初期設定（4.14）に「Google と連携」ボタンを置き、代表の管理者が自分のスマホで `tamahouse0930@gmail.com` にログインして 1 回だけ許可する（2 段階認証の確認もそのスマホで受ける。要件定義書 S-07a）。受け取ったリフレッシュトークンは暗号化（AES-GCM。鍵は最初のデプロイ時に開発者が Workers のシークレットに登録）して `google_link` に保存する。連携の状態（連携済み／エラー）は設定画面に表示し、切れた場合はボタンを押し直すだけで直る。Cloudflare のダッシュボードの操作は要らない。
+通知メールの送信には `tamahouse0930@gmail.com` の「メールの送信」、写真の保存には `s.tamaki@tmkjp.com` の「このアプリが作ったファイルの管理」の権限が必要になる。管理画面の初期設定（4.14）に用途ごとの「連携する」ボタンを置き、代表の管理者が自分のスマホでそれぞれのアカウントにログインして 1 回だけ許可する（2 段階認証の確認もそのスマホで受ける。要件定義書 S-07a）。受け取ったリフレッシュトークンは暗号化（AES-GCM。鍵は最初のデプロイ時に開発者が Workers のシークレットに登録）して `google_links` に保存する。連携の状態（連携済み／エラー）は設定画面に表示し、切れた場合はボタンを押し直すだけで直る。Cloudflare のダッシュボードの操作は要らない。
 
 ### 7.2 対策の一覧
 
